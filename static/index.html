@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DaVinci Code</title>
+    <link rel="stylesheet" href="/static/style.css?v=8">
+</head>
+<body>
+    <div id="app">
+        <!-- 시작 화면 -->
+        <div id="start-screen" class="screen">
+            <div class="title-area">
+                <div class="title-cards">
+                    <div class="title-card title-card-black" id="title-card-black">
+                        <div class="card-inner">
+                            <div class="card-back">?</div>
+                            <div class="card-front" id="black-card-value">0</div>
+                        </div>
+                    </div>
+                    <div class="title-card title-card-white" id="title-card-white">
+                        <div class="card-inner">
+                            <div class="card-back">?</div>
+                            <div class="card-front" id="white-card-value">0</div>
+                        </div>
+                    </div>
+                </div>
+                <h1>DaVinci Code</h1>
+            </div>
+            
+            <div class="start-options">
+                <!-- AI 대전 섹션 -->
+                <div class="option-group ai-options">
+                    <h2>🤖 AI 대전</h2>
+                    <button id="play-vs-ai-btn" class="btn-primary btn-large">AI와 대전하기</button>
+                </div>
+                
+                <div class="option-divider">
+                    <span>또는</span>
+                </div>
+                
+                <!-- PvP 섹션 -->
+                <div class="option-group pvp-options">
+                    <h2>👥 PvP 대전</h2>
+                    <button id="create-game-btn" class="btn-primary btn-large">🎮 새 게임 만들기</button>
+                    <div class="join-section">
+                        <p>게임 ID로 참가:</p>
+                        <div class="join-input-group">
+                            <input type="text" id="game-id-input" placeholder="게임 ID 입력" maxlength="8">
+                            <button id="join-game-btn" class="btn-secondary">참가</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="rules">
+                <h3>📖 게임 규칙</h3>
+                <ul>
+                    <li><strong>카드:</strong> 검정(0-11) + 하양(0-11) + 조커(-, 각 1장) = 26장</li>
+                    <li><strong>정렬:</strong> 카드는 항상 숫자 오름차순 (같으면 검정 우선)</li>
+                    <li><strong>진행:</strong> 덱에서 카드를 뽑은 뒤, 상대 숨겨진 카드의 숫자를 추측</li>
+                    <li><strong>성공:</strong> 맞히면 상대 카드 공개 + 계속 추측 가능</li>
+                    <li><strong>실패:</strong> 틀리면 내가 뽑은 카드가 공개됨</li>
+                    <li><strong>승리:</strong> 상대 모든 카드를 먼저 공개시키면 승리!</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- 로비/대기 화면 -->
+        <div id="lobby-screen" class="screen hidden">
+            <div class="lobby-content">
+                <h2>🎮 게임 대기 중...</h2>
+                <div id="waiting-message" class="waiting-box">
+                    <p>상대방을 기다리고 있습니다.</p>
+                    <p>게임 ID: <strong id="waiting-game-id">-</strong></p>
+                    <p class="hint">이 ID를 상대방에게 공유하세요!</p>
+                </div>
+                <div class="loading">
+                    <span class="spinner"></span>
+                </div>
+                <button id="cancel-wait-btn" class="btn-secondary">취소</button>
+            </div>
+        </div>
+        
+        <!-- 게임 화면 -->
+        <div id="game-screen" class="screen hidden">
+            <!-- 상태 표시줄 -->
+            <div class="status-bar hidden">
+                <div class="status-item">
+                    <span class="label">페이즈:</span>
+                    <span id="phase" class="value phase-badge">-</span>
+                </div>
+            </div>
+            
+            <!-- 메시지 영역 -->
+            <div id="message-area">
+                <div id="message">게임을 시작하세요</div>
+            </div>
+            
+            <!-- 상대방 손패 (상단) -->
+            <div class="hand-area opponent-area">
+                <h3>🎭 상대방 손패 <span class="card-count"></span></h3>
+                <div id="opponent-hand" class="hand"></div>
+            </div>
+            
+            <!-- 중앙 영역: 액션 + 로그 -->
+            <div class="middle-area">
+                <!-- 액션 영역 -->
+                <div id="action-area" class="hidden">
+                    <!-- DRAW 액션 -->
+                    <div id="draw-action" class="action-panel hidden">
+                        <h4>🃏 카드 뽑기</h4>
+                        <p class="action-hint">덱에서 원하는 색상의 카드를 클릭하세요</p>
+                        <div id="deck-cards" class="deck-cards">
+                            <!-- JS에서 카드 생성 -->
+                        </div>
+                    </div>
+                    
+                    <!-- JOKER 위치 선택 -->
+                    <div id="joker-place-action" class="action-panel hidden">
+                        <h4>🃏 조커 위치 선택</h4>
+                        <p class="action-hint">조커를 놓을 위치를 클릭하세요 (카드 사이의 슬롯)</p>
+                        <div id="joker-slots" class="joker-slots">
+                            <!-- JS에서 슬롯 생성 -->
+                        </div>
+                    </div>
+                    
+                    <!-- 카드 배치 위치 선택 -->
+                    <div id="place-action" class="action-panel hidden">
+                        <h4>📍 카드 배치 위치 선택</h4>
+                        <p class="action-hint">카드를 놓을 위치를 클릭하세요</p>
+                        <div id="place-slots" class="place-slots">
+                            <!-- JS에서 슬롯 생성 -->
+                        </div>
+                    </div>
+                    
+                    <!-- GUESS 액션 -->
+                    <div id="guess-action" class="action-panel hidden">
+                        <h4>🔮 카드 추측하기</h4>
+                        <p class="action-hint">상대 카드를 클릭하여 선택 후 숫자를 맞춰보세요</p>
+                        <div class="guess-inputs">
+                            <div class="input-group">
+                                <label for="guess-value">숫자:</label>
+                                <select id="guess-value"></select>
+                            </div>
+                            <button id="guess-btn" class="btn-primary" type="button">🎯 추측!</button>
+                        </div>
+                    </div>
+                    
+                    <!-- DECISION 액션 -->
+                    <div id="decision-action" class="action-panel hidden">
+                        <h4>🤔 계속할까요?</h4>
+                        <p class="action-hint">맞았습니다! 계속 추측하시겠습니까?</p>
+                        <div class="action-buttons">
+                            <button id="decision-continue" class="btn-success" type="button">
+                                ✅ 계속 추측
+                            </button>
+                            <button id="decision-stop" class="btn-warning" type="button">
+                                🛑 턴 종료
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- 상대방 턴 표시 -->
+                    <div id="waiting-turn" class="action-panel hidden">
+                        <h4>🎭 상대방 차례</h4>
+                        <div class="loading">
+                            <span class="spinner"></span>
+                            <span>상대방이 행동 중입니다...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 플레이어 손패 (하단) -->
+            <div class="hand-area player-area">
+                <h3>👤 나의 손패 <span class="card-count"></span></h3>
+                <div id="player-hand" class="hand"></div>
+            </div>
+            
+            <!-- 게임 종료 오버레이 -->
+            <div id="game-over-overlay" class="overlay hidden">
+                <div class="overlay-content">
+                    <h2 id="game-over-title">게임 종료</h2>
+                    <p id="game-over-message">결과</p>
+                    <button id="new-game-btn" class="btn-primary" type="button">🔄 새 게임</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="/static/game.js?v=14"></script>
+</body>
+</html>
