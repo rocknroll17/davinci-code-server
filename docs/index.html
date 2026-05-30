@@ -3,30 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DaVinci Code — AI Lab</title>
+    <title>DaVinci Code — AI 대전</title>
     <link rel="stylesheet" href="style.css?v=8">
     <link rel="stylesheet" href="ai_game.css?v=4">
 </head>
 <body>
 
-    <!-- 비밀번호 게이트 -->
-    <div id="password-gate">
-        <div class="password-gate-card">
-            <h2>🔐 AI Lab</h2>
-            <p>AI 추론 시각화 전용 페이지입니다</p>
-            <input
-                type="password"
-                id="gate-password-input"
-                placeholder="비밀번호 입력"
-                autocomplete="off"
-            >
-            <button id="gate-confirm-btn">확인</button>
-            <div id="gate-error-msg"></div>
-        </div>
-    </div>
-
-    <!-- 게임 본체 (비번 확인 전까지 렌더링하지 않음) -->
-    <div id="app" class="hidden">
+    <div id="app">
         <!-- 시작 화면 -->
         <div id="start-screen" class="screen">
             <div class="title-area">
@@ -53,23 +36,6 @@
                     <h2>🤖 AI 대전</h2>
                     <button id="play-vs-ai-btn" class="btn-primary btn-large">AI와 대전하기</button>
                 </div>
-                
-                <div class="option-divider">
-                    <span>또는</span>
-                </div>
-                
-                <!-- PvP 섹션 -->
-                <div class="option-group pvp-options">
-                    <h2>👥 PvP 대전</h2>
-                    <button id="create-game-btn" class="btn-primary btn-large">🎮 새 게임 만들기</button>
-                    <div class="join-section">
-                        <p>게임 ID로 참가:</p>
-                        <div class="join-input-group">
-                            <input type="text" id="game-id-input" placeholder="게임 ID 입력" maxlength="8">
-                            <button id="join-game-btn" class="btn-secondary">참가</button>
-                        </div>
-                    </div>
-                </div>
             </div>
             
             <div class="rules">
@@ -82,22 +48,6 @@
                     <li><strong>실패:</strong> 틀리면 내가 뽑은 카드가 공개됨</li>
                     <li><strong>승리:</strong> 상대 모든 카드를 먼저 공개시키면 승리!</li>
                 </ul>
-            </div>
-        </div>
-        
-        <!-- 로비/대기 화면 -->
-        <div id="lobby-screen" class="screen hidden">
-            <div class="lobby-content">
-                <h2>🎮 게임 대기 중...</h2>
-                <div id="waiting-message" class="waiting-box">
-                    <p>상대방을 기다리고 있습니다.</p>
-                    <p>게임 ID: <strong id="waiting-game-id">-</strong></p>
-                    <p class="hint">이 ID를 상대방에게 공유하세요!</p>
-                </div>
-                <div class="loading">
-                    <span class="spinner"></span>
-                </div>
-                <button id="cancel-wait-btn" class="btn-secondary">취소</button>
             </div>
         </div>
         
@@ -207,37 +157,6 @@
             </div>
 
             </div>
-        </div>
-    </div>
-
-    <!-- AI 추론 사이드 패널 (AI 시점 렌더링) -->
-    <div id="ai-reasoning-panel" class="hidden">
-        <div class="ai-panel-header">
-            <span class="ai-brain-icon">🧠</span>
-            <span id="ai-panel-title">AI 추론 시점</span>
-        </div>
-        <div class="ai-panel-body">
-            <div class="ai-panel-section">
-                <div class="ai-panel-section-label">🤖 AI 자신의 패 (실제 값)</div>
-                <div id="ai-panel-ai-hand" class="ai-mini-hand"></div>
-            </div>
-            <div class="ai-panel-divider"></div>
-            <div class="ai-panel-section">
-                <div class="ai-panel-section-label-row">
-                    <span>👤 상대 패 (AI 시점)</span>
-                    <button id="ai-panel-reveal-toggle" type="button">실제 값 보기</button>
-                </div>
-                <div id="ai-panel-human-hand" class="ai-mini-hand"></div>
-            </div>
-            <div class="ai-panel-divider"></div>
-            <div class="ai-panel-conclusion" id="ai-panel-conclusion"></div>
-            <div class="ai-panel-section">
-                <div class="ai-panel-section-label">📊 어텐션 스코어</div>
-                <div id="ai-panel-scores" class="ai-panel-scores"></div>
-            </div>
-        </div>
-        <div class="ai-panel-footer">
-            <button id="ai-reasoning-confirm-btn" type="button">확인</button>
         </div>
     </div>
 

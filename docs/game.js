@@ -10,38 +10,9 @@
  *     event names with the SAME payload fields (driven by engine.js orchestration)
  */
 
-// ============== 비밀번호 게이트 ==============
-
-// 비밀번호는 여기서 변경하세요
-const AI_GAME_PASSWORD = 'davinci';
-
-(function initPasswordGate() {
-    const gate       = document.getElementById('password-gate');
-    const input      = document.getElementById('gate-password-input');
-    const confirmBtn = document.getElementById('gate-confirm-btn');
-    const errorMsg   = document.getElementById('gate-error-msg');
-    const app        = document.getElementById('app');
-
-    function tryUnlock() {
-        if (input.value === AI_GAME_PASSWORD) {
-            gate.classList.add('hidden');
-            app.classList.remove('hidden');
-            initTitleCards();
-        } else {
-            errorMsg.textContent = '⚠️ 비밀번호가 틀렸습니다';
-            input.classList.add('error');
-            input.value = '';
-            setTimeout(() => {
-                input.classList.remove('error');
-                errorMsg.textContent = '';
-            }, 1200);
-        }
-    }
-
-    confirmBtn?.addEventListener('click', tryUnlock);
-    input?.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryUnlock(); });
-    input?.focus();
-})();
+// ============== 초기화 ==============
+// 공개 플레이 페이지: 비밀번호 게이트 없이 바로 시작.
+initTitleCards();
 
 // ============== State ==============
 
@@ -436,10 +407,8 @@ class LocalSession {
             else { position = 0; value = 0; }
         }
 
-        // ai_reasoning emitted ~0.8s before guess, then block on ack
-        if (reasoning) {
-            await new Promise((resolve) => { this._reasoningAck = resolve; emitEvent('ai_reasoning', reasoning); });
-        }
+        // Public play: no reasoning panel — brief "thinking" pause, then guess.
+        await new Promise((resolve) => setTimeout(resolve, 800));
 
         const result = DV.engineGuess(e, ai.id, position, value);
         const valueStr = value === 12 ? '조커' : String(value);
