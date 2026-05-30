@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/rocknroll17/davinci-code-server/compare/v0.3.0...v0.3.1) (2026-05-30)
+
+
+### Bug Fixes
+
+* pin numpy to 3.10-compatible (&gt;=2.2.0); numpy 2.4 requires Python 3.11 ([bd3791e](https://github.com/rocknroll17/davinci-code-server/commit/bd3791e33ca2135dfc2d5d496b63b6297f6da02e))
+
 ## [0.3.0](https://github.com/rocknroll17/davinci-code-server/compare/v0.2.0...v0.3.0) (2026-05-30)
 
 
