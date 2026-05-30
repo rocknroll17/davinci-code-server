@@ -10,10 +10,6 @@
  *     event names with the SAME payload fields (driven by engine.js orchestration)
  */
 
-// ============== 초기화 ==============
-// 공개 플레이 페이지: 비밀번호 게이트 없이 바로 시작.
-initTitleCards();
-
 // ============== State ==============
 
 let gameState = null;
@@ -1543,5 +1539,6 @@ function hideAIReasoningOverlay() {
 }
 
 // ============== Init ==============
-
+// Public play page: no password gate — initialize once everything (incl. DV) is defined.
+initTitleCards();
 console.log('🧠 Da Vinci Code AI Lab loaded');
