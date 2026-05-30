@@ -1,0 +1,123 @@
+name: Deploy
+
+# Pulls the freshly published GHCR image onto the production server whenever a
+# Release is published, or on-demand via workflow_dispatch. Modeled on the
+# QR-Bloom deploy: GitHub Actions SSHes into the server and swaps the container.
+#
+# The server is expected to have:
+#   - Docker with the NVIDIA Container Toolkit (--gpus all works)
+#   - The deploy SSH key registered in the deploy user's ~/.ssh/authorized_keys
+#   - A writable checkpoints directory at DEPLOY_CHECKPOINTS_DIR
+#
+# Required repo secrets:
+#   DEPLOY_HOST             SSH host reachable from GitHub (public IP / hostname)
+#   DEPLOY_USER             SSH user on the server
+#   DEPLOY_SSH_KEY          private SSH key (matching an authorized_keys entry)
+#   DEPLOY_CHECKPOINTS_DIR  host dir mounted to /app/checkpoints (holds model.pt)
+# Optional:
+#   DEPLOY_PORT             host port to publish (defaults to 6000)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag to pull (e.g. v0.2.0, defaults to latest)'
+        required: false
+        default: 'latest'
+
+permissions:
+  contents: read
+
+# Only one production deploy at a time; let the current one finish.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          CHECKPOINTS_DIR: ${{ secrets.DEPLOY_CHECKPOINTS_DIR }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: 22
+          envs: RELEASE_TAG,INPUT_TAG,CHECKPOINTS_DIR,DEPLOY_PORT
+          script: |
+            set -e
+            TAG="${INPUT_TAG:-${RELEASE_TAG:-latest}}"
+            REPO="rocknroll17/davinci-code-server"
+            IMAGE="ghcr.io/${REPO}:${TAG}"
+            CHECKPOINTS="${CHECKPOINTS_DIR}"
+            PORT="${DEPLOY_PORT:-6000}"
+
+            echo "==> Ensuring model.pt in ${CHECKPOINTS}"
+            # model.pt ships as a GitHub Release asset (public repo, no auth).
+            # On a release with a model.pt asset, refresh it; otherwise keep the
+            # existing file. Atomic replace via .tmp + mv.
+            mkdir -p "${CHECKPOINTS}"
+            if [ "${TAG}" = "latest" ]; then
+              MODEL_URL="https://github.com/${REPO}/releases/latest/download/model.pt"
+            else
+              MODEL_URL="https://github.com/${REPO}/releases/download/${TAG}/model.pt"
+            fi
+            if curl -fsSL -o "${CHECKPOINTS}/model.pt.tmp" "${MODEL_URL}"; then
+              mv "${CHECKPOINTS}/model.pt.tmp" "${CHECKPOINTS}/model.pt"
+              echo "  model.pt refreshed from ${TAG}"
+            elif [ -f "${CHECKPOINTS}/model.pt" ]; then
+              rm -f "${CHECKPOINTS}/model.pt.tmp"
+              echo "  no model.pt asset on ${TAG}; keeping existing"
+            else
+              echo "  ERROR: no model.pt asset on ${TAG} and none present locally"
+              exit 1
+            fi
+
+            echo "==> Pulling ${IMAGE}"
+            # release.yml fires on the same tag and races us. Retry until the
+            # image manifest is available (up to ~2 min).
+            for i in 1 2 3 4 5 6 7 8; do
+              if docker pull "${IMAGE}"; then break; fi
+              if [ "$i" = "8" ]; then
+                echo "ERROR: image ${IMAGE} still not available; aborting."; exit 1
+              fi
+              echo "image not available yet, retrying in 15s (attempt $i/8)..."
+              sleep 15
+            done
+
+            echo "==> Replacing container (host port ${PORT})"
+            docker rm -f davinci-server 2>/dev/null || true
+            for c in $(docker ps --filter "publish=${PORT}" -q); do
+              echo "    removing $c on port ${PORT}"; docker rm -f "$c" || true
+            done
+
+            docker run -d \
+              --name davinci-server \
+              --restart unless-stopped \
+              --gpus all \
+              -p "${PORT}:6000" \
+              -v "${CHECKPOINTS}:/app/checkpoints:ro" \
+              --log-driver json-file \
+              --log-opt max-size=10m \
+              --log-opt max-file=3 \
+              "${IMAGE}"
+
+            echo "==> Pruning old ${REPO} images (keep the one in use)"
+            KEEP_ID=$(docker inspect --format '{{.Image}}' davinci-server | sed 's/^sha256://')
+            for id in $(docker images "ghcr.io/${REPO}" -q | sort -u); do
+              [ "$id" != "$KEEP_ID" ] && docker rmi "$id" 2>/dev/null || true
+            done
+
+            echo "==> Status"
+            docker ps --filter name=davinci-server \
+              --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}'
