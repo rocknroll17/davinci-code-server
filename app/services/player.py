@@ -183,6 +183,8 @@ class AIPlayer(Player):
         super().__init__(player_id)
         self.device = model_loader.device
         self._constraint_matrix: np.ndarray = np.full((MAX_HAND_SIZE, NUM_VALUES), -1, dtype=np.int8)
+        self._last_reasoning = None  # 마지막 추측 추론 데이터 (시각화용)
+        self._reasoning_ack: asyncio.Event = asyncio.Event()  # 클라이언트 확인 버튼 신호
     
     @property
     def player_type(self) -> PlayerType:
@@ -210,23 +212,43 @@ class AIPlayer(Player):
         return random.choice(valid_positions)
     
     def guess_action(self, engine: "GameEngine") -> Tuple[int, int]:
-        """추측할 (위치, 값) 결정"""
+        """추측할 (위치, 값) 결정 + 추론 시각화 데이터 수집"""
+        obs = Observation.from_engine(engine, self.id, self.device)
+        mask = ActionMask.from_engine(engine, self.id, self.device)
 
-        action = self.get_action(engine)
+        try:
+            action, reasoning = model_loader.get_action_with_reasoning(obs.to_dict(), mask.to_dict())
+            self._last_reasoning = reasoning
+            # AI 자신의 패를 추론 페이로드에 포함 (실제 값 포함 — AI는 자기 패를 앎)
+            self._last_reasoning['ai_hand'] = [
+                {
+                    'position': i,
+                    'color': int(card.color),
+                    'value': int(card.value),
+                    'is_revealed': card.is_revealed
+                }
+                for i, card in enumerate(self._hand)
+            ]
+        except Exception:
+            action, _, _ = model_loader.get_action(obs.to_dict(), mask.to_dict())
+            self._last_reasoning = None
+
         position = int(action[0, 1].item())
         value = int(action[0, 2].item())
-        
+
         # 유효성 검증 (self.opponent_hand 사용)
         opp_hand = self.opponent_hand
         if opp_hand and position < len(opp_hand) and not opp_hand[position].is_revealed:
             return position, value
-        
+
         # Fallback: 첫 번째 숨겨진 카드
         if opp_hand:
             for i, card in enumerate(opp_hand):
                 if not card.is_revealed:
+                    if self._last_reasoning:
+                        self._last_reasoning['position'] = i
                     return i, value
-        
+
         return 0, 0
     
     def decision_action(self, engine: "GameEngine") -> bool:
@@ -264,11 +286,6 @@ class AIPlayer(Player):
     
     # ==================== Constraint Matrix 관리 ====================
     
-    @property
-    def constraint_matrix(self) -> np.ndarray:
-        """현재 constraint matrix 반환"""
-        return self._constraint_matrix.copy()
-    
     def reset_constraint_matrix(self):
         """constraint matrix 초기화 (모두 -1: 상대 핸드에 없는 위치)"""
         self._constraint_matrix.fill(-1)
@@ -282,16 +299,18 @@ class AIPlayer(Player):
         """
         self._constraint_matrix[:initial_hand_size, :] = 0
     
-    def record_failed_guess(self, position: int, value: int):
+    def record_failed_guess(self, position: int, value: int, color: int = 0):
         """
-        틀린 추측 기록
+        틀린 추측 기록 (13-col, slot color known from opp_hand)
         
         Args:
             position: 추측한 위치
-            value: 틀린 값
+            value: 틀린 값 (0-12)
+            color: 카드 색상 (미사용, opp_hand에서 이미 전달됨)
         """
         if 0 <= position < MAX_HAND_SIZE and 0 <= value < NUM_VALUES:
-            self._constraint_matrix[position, value] = 1
+            col = value
+            self._constraint_matrix[position, col] = 1
     
     def record_revealed(self, position: int):
         """
@@ -325,3 +344,8 @@ class AIPlayer(Player):
         # 원래 크기로 truncate
         if self._constraint_matrix.shape[0] > nrows:
             self._constraint_matrix = self._constraint_matrix[:nrows, :]
+
+    @property
+    def constraint_matrix(self) -> np.ndarray:
+        """current constraint matrix 반환 (NUM_VALUES cols)"""
+        return self._constraint_matrix.copy()

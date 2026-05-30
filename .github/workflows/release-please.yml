@@ -1,0 +1,28 @@
+name: release-please
+
+# Watches conventional commits on main. When fix:/feat:/etc. land, opens a
+# "chore(main): release X.Y.Z" PR with an auto-generated changelog. Merging
+# that PR pushes the vX.Y.Z tag and creates the GitHub Release — which then
+# triggers release.yml to build and publish the Docker image.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v5
+        with:
+          # A personal access token (repo secret RELEASE_PLEASE_TOKEN) is used so
+          # the tag this action pushes can trigger downstream workflows (release.yml).
+          # Tag pushes made with the default GITHUB_TOKEN do NOT trigger other
+          # workflows by design, which would leave new versions without an image.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

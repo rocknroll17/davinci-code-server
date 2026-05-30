@@ -219,7 +219,7 @@ function connectSSE() {
     eventSource.addEventListener('heartbeat', (e) => {
         console.log('Heartbeat');
     });
-    
+
     // 본인 액션 결과 수신 (API 응답 대신 SSE로 상태 갱신)
     eventSource.addEventListener('my_action', (e) => {
         const data = JSON.parse(e.data);
@@ -296,6 +296,15 @@ function connectSSE() {
         setTimeout(() => {
             if (gameId && playerId) connectSSE();
         }, 3000);
+    });
+
+    // AI 추론 이벤트 — 일반 모드에서는 오버레이 없이 자동 확인
+    eventSource.addEventListener('ai_reasoning', async () => {
+        try {
+            await fetch(`/api/game/reasoning_ack?game_id=${gameId}&player_id=${playerId}`, { method: 'POST' });
+        } catch (e) {
+            console.error('Reasoning ack failed:', e);
+        }
     });
 
     eventSource.addEventListener('state_update', (e) => {

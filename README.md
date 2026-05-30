@@ -1,5 +1,11 @@
 # Da Vinci Code Game Server
 
+[![CI](https://github.com/rocknroll17/davinci-code-server/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rocknroll17/davinci-code-server/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/rocknroll17/davinci-code-server/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/rocknroll17/davinci-code-server/actions/workflows/codeql.yml)
+[![Release](https://github.com/rocknroll17/davinci-code-server/actions/workflows/release.yml/badge.svg)](https://github.com/rocknroll17/davinci-code-server/actions/workflows/release.yml)
+[![GHCR](https://img.shields.io/badge/ghcr.io-davinci--code--server-2ea44f?logo=docker&logoColor=white)](https://github.com/rocknroll17/davinci-code-server/pkgs/container/davinci-code-server)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 An online game server for the Da Vinci Code board game.  
 Built with **FastAPI** + **SSE (Server-Sent Events)** for real-time game event streaming.  
 Supports AI opponents powered by a trained RL model.
@@ -137,6 +143,54 @@ Client (Browser)
 - **Session**: Individual game + players + SSE listener management
 - **Engine**: Pure game logic (deck, hand, phases)
 - **Game**: Domain models (cards, constants, AI model)
+
+## Docker
+
+A prebuilt image is published to GitHub Container Registry on every release.
+
+> **The model checkpoint is NOT baked into the image** (`*.pt` is git-/docker-ignored).
+> It ships as a **GitHub Release asset**; download it and mount a `checkpoints/`
+> directory containing `model.pt` at runtime.
+
+### Model weights
+
+`model.pt` is attached to each [GitHub Release](https://github.com/rocknroll17/davinci-code-server/releases).
+Grab it into a local `checkpoints/` dir:
+
+```bash
+mkdir -p checkpoints
+gh release download --repo rocknroll17/davinci-code-server --pattern model.pt --dir checkpoints
+# or: curl -L -o checkpoints/model.pt \
+#   https://github.com/rocknroll17/davinci-code-server/releases/latest/download/model.pt
+```
+
+### Pull and run
+
+```bash
+docker pull ghcr.io/rocknroll17/davinci-code-server:latest
+
+# Host port is configurable; the container always listens on 6000.
+PORT="${PORT:-6000}"          # pick any free host port, e.g. PORT=8080
+docker run -d --gpus all \
+    --name davinci-server \
+    --restart unless-stopped \
+    -p "${PORT}:6000" \
+    -v "$(pwd)/checkpoints:/app/checkpoints:ro" \
+    ghcr.io/rocknroll17/davinci-code-server:latest
+```
+
+Then open `http://localhost:${PORT}` (AI mode at `/ai_game`). The container port
+stays 6000; only the host side of `-p` changes — so it never collides with other
+services (e.g. another container on 6000). `--gpus all` runs inference on the GPU
+(requires the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html));
+drop the flag to fall back to CPU.
+
+### Build locally
+
+```bash
+docker build -t davinci-server .
+docker run -d --gpus all -p "${PORT:-6000}:6000" -v "$(pwd)/checkpoints:/app/checkpoints:ro" davinci-server
+```
 
 ## License
 

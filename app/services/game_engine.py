@@ -269,9 +269,9 @@ class GameEngine:
             if target_hand.all_revealed():
                 self._end_game(self.current_player)
         else:
-            # 틀린 추측을 constraint matrix에 기록 (AI만)
+            # 틀린 추측을 constraint matrix에 기록 (AI만, color-aware)
             if hasattr(player, '_constraint_matrix'):
-                player.record_failed_guess(target_position, guessed_value)
+                player.record_failed_guess(target_position, guessed_value, target_card.color.value)
             
             # 틀리면 카드 공개 (last_drawn_card 없으면 랜덤 숨겨진 카드 - 학습과 동일)
             revealed_index = self._reveal_drawn_card()
