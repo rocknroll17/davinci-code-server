@@ -3,5 +3,5 @@ uvicorn>=0.40.0
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
 starlette>=0.45.0
-numpy>=2.2.0
+numpy>=2.4.6
 torch>=2.9.0
