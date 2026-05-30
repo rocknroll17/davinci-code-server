@@ -79,6 +79,8 @@ async def root():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
-@app.get("/ai", include_in_schema=False)
-async def ai_game():
-    return FileResponse(os.path.join(STATIC_DIR, "ai_game.html"))
+# AI 추론 시각화 Lab — ENABLE_REASONING일 때만 노출 (운영 기본 OFF)
+if settings.ENABLE_REASONING:
+    @app.get("/ai", include_in_schema=False)
+    async def ai_game():
+        return FileResponse(os.path.join(STATIC_DIR, "ai_game.html"))
