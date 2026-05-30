@@ -70,6 +70,23 @@ async def make_decision(req: DecisionRequest, background_tasks: BackgroundTasks)
         handle_game_error(e)
 
 
+@router.post("/reasoning_ack", response_model=SimpleActionResponse)
+async def reasoning_ack(game_id: str = Query(...), player_id: str = Query(...)):
+    """AI 추론 오버레이 확인 버튼 신호 — AI 추측 진행을 허용"""
+    try:
+        from app.services.game_manager import game_manager
+        session = game_manager.get_game(game_id)
+        if session:
+            ai_player = next((p for p in session.players if p is not None and p.is_ai), None)
+            if ai_player:
+                ack = getattr(ai_player, '_reasoning_ack', None)
+                if ack is not None:
+                    ack.set()
+        return SimpleActionResponse(success=True)
+    except Exception as e:
+        handle_game_error(e)
+
+
 async def _maybe_run_ai(game_id: str, sleep_time: float = 0.0):
     """백그라운드에서 AI 턴 실행"""
     try:

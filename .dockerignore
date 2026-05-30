@@ -1,0 +1,13 @@
+.git
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pt
+*.pth
+checkpoints/
+*.log
+*.bak
+.vscode/
+.idea/
+.DS_Store
