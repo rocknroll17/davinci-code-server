@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
-from .base import ActionHandler
+from .base import ActionHandler, ActionResult
 from app.schemas.emitters.guess import GuessEmitter, RevealedCard
 from app.schemas.emitters.turn_change import TurnChangeEmitter
 from app.schemas.emitters.game_over import GameOverEmitter
@@ -43,6 +43,29 @@ class GuessHandler(ActionHandler):
         self.position = position
         self.value = value
         self._revealed_card: Optional[RevealedCard] = None
+
+    async def execute(self) -> "ActionResult":
+        """AI 추측 전 추론 시각화 SSE 발송 후 실행"""
+        if self.is_ai:
+            reasoning = getattr(self.player, '_last_reasoning', None)
+            if reasoning is not None:
+                opponent = self.player.opponent
+                if opponent and not opponent.is_ai:
+                    # 클라이언트 확인 이벤트 초기화 후 추론 데이터 발송
+                    ack_event = getattr(self.player, '_reasoning_ack', None)
+                    if ack_event is not None:
+                        ack_event.clear()
+                    opponent.emit('ai_reasoning', reasoning)
+                    self.player._last_reasoning = None
+                    # 클라이언트가 확인 버튼을 누를 때까지 대기 (최대 60s 타임아웃)
+                    if ack_event is not None:
+                        try:
+                            await asyncio.wait_for(ack_event.wait(), timeout=60.0)
+                        except asyncio.TimeoutError:
+                            pass  # 타임아웃이면 그냥 진행
+                else:
+                    self.player._last_reasoning = None
+        return await super().execute()
     
     def execute_action(self) -> "GuessResult":
         """추측 실행"""
