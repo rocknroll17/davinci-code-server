@@ -254,14 +254,47 @@ class ActionMask:
         value_mask = np.ones((MAX_HAND_SIZE, NUM_VALUES), dtype=bool)
         for i in range(len(opponent_hand)):
             card = opponent_hand[i]
-            if card is not None and not card.is_revealed:
-                if card.color == Color.BLACK:
-                    value_mask[i] = ~black_confirmed
-                else:
-                    value_mask[i] = ~white_confirmed
-                # Safety: 최소 하나의 값은 유효하도록 보장
-                if not value_mask[i].any():
-                    value_mask[i] = np.ones(NUM_VALUES, dtype=bool)
+            if card is None or card.is_revealed:
+                continue
+
+            # Step 1: 이미 확인된 (색+값) 마스킹
+            if card.color == Color.BLACK:
+                value_mask[i] = ~black_confirmed
+            else:
+                value_mask[i] = ~white_confirmed
+
+            # Step 2: 정렬 순서 제약 — 인접한 공개 비조커 이웃으로부터 범위 제한
+            left_val, left_col_val = None, None
+            for j in range(i - 1, -1, -1):
+                adj = opponent_hand[j] if j < len(opponent_hand) else None
+                if adj is not None and adj.is_revealed and not adj.is_joker:
+                    left_val, left_col_val = int(adj.value), int(adj.color)
+                    break
+
+            right_val, right_col_val = None, None
+            for j in range(i + 1, len(opponent_hand)):
+                adj = opponent_hand[j]
+                if adj is not None and adj.is_revealed and not adj.is_joker:
+                    right_val, right_col_val = int(adj.value), int(adj.color)
+                    break
+
+            if left_val is not None or right_val is not None:
+                hidden_color_val = int(card.color)
+                # 조커(12)는 어디든 배치 가능 → 순서 제약 적용 안 함
+                for v in range(NUM_VALUES - 1):
+                    if not value_mask[i, v]:
+                        continue
+                    if left_val is not None:
+                        if v < left_val or (v == left_val and hidden_color_val <= left_col_val):
+                            value_mask[i, v] = False
+                            continue
+                    if right_val is not None:
+                        if v > right_val or (v == right_val and hidden_color_val >= right_col_val):
+                            value_mask[i, v] = False
+
+            # Safety: 최소 하나의 값은 유효하도록 보장
+            if not value_mask[i].any():
+                value_mask[i] = np.ones(NUM_VALUES, dtype=bool)
         
         # Decision mask
         decision_mask = np.array([True, True], dtype=bool)

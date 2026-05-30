@@ -77,3 +77,8 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @app.get("/", include_in_schema=False)
 async def root():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+
+@app.get("/ai", include_in_schema=False)
+async def ai_game():
+    return FileResponse(os.path.join(STATIC_DIR, "ai_game.html"))
