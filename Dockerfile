@@ -4,7 +4,9 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# 의존성 먼저 복사 → 레이어 캐시 활용
+# 의존성 먼저 복사 → 레이어 캐시 활용.
+# torch>=2.9.0 기본 휠 = CUDA 빌드. `docker run --gpus all`로 GPU 추론,
+# 플래그 없이 실행하면 CPU로 자동 폴백(torch.cuda.is_available()).
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

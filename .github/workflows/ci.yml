@@ -1,0 +1,39 @@
+name: CI
+
+# Byte-compiles the app and imports it (route registration) on CPU.
+# The model checkpoint is not needed — lifespan/model load does not run on import.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.10'
+          cache: pip
+
+      - name: Install dependencies (CPU PyTorch)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+
+      - name: Byte-compile
+        run: python -m compileall -q app run.py
+
+      - name: App import smoke
+        run: python scripts/ci_smoke.py
