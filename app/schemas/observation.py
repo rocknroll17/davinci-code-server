@@ -292,9 +292,13 @@ class ActionMask:
                         if v > right_val or (v == right_val and hidden_color_val >= right_col_val):
                             value_mask[i, v] = False
 
-            # Safety: 최소 하나의 값은 유효하도록 보장
+            # Safety: 최소 하나의 값은 유효하도록 보장.
+            # Step 2(정렬 순서)가 과하게 마스킹해 후보가 0개가 되면, 전체를 풀지 않고
+            # Step 1(색 확정) 결과로만 되돌린다 — 색으로 이미 제거된 값까지 부활시키지 않기 위함.
+            # Step 1 결과마저 비어 있는 모순 상황에서만 전체 허용으로 폴백.
             if not value_mask[i].any():
-                value_mask[i] = np.ones(NUM_VALUES, dtype=bool)
+                step1_mask = ~black_confirmed if card.color == Color.BLACK else ~white_confirmed
+                value_mask[i] = step1_mask if step1_mask.any() else np.ones(NUM_VALUES, dtype=bool)
         
         # Decision mask
         decision_mask = np.array([True, True], dtype=bool)

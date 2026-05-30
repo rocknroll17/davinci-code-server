@@ -40,10 +40,8 @@ def create_ai_game(use_model: bool = Query(True, description="학습된 모델 �
         game_id, player_id = game_service.create_ai_game(use_model=use_model)
         return NewGameResponse(game_id=game_id, player_id=player_id)
     except Exception as e:
-        raise e
         handle_game_error(e)
-        print(e)
-        
+
 
 
 @router.post("/join", response_model=JoinGameResponse)
