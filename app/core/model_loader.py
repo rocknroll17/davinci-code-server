@@ -65,18 +65,23 @@ class ModelLoader:
         """
         AI 액션 결정 + 마지막 Transformer 레이어 기반 추론 시각화 데이터 추출.
 
-        토큰 레이아웃 (29개, CLS 포함):
+        토큰 레이아웃 (42개, CLS 포함):
           [0]      CLS
-          [1-13]   AI 자신의 카드  (화면의 opponent-hand)
+          [1-13]   AI 자신의 카드   (화면의 opponent-hand)
           [14-26]  상대 (인간) 카드 (화면의 player-hand)
-          [27]     phase 토큰
-          [28]     deck 토큰
+          [27-39]  constraint 토큰  (화면에 표시 안 함)
+          [40]     phase 토큰
+          [41]     deck 토큰
 
-        attention_scores 반환 레이아웃 (28개, CLS 제외):
-          [0-12]   AI 자신의 카드  (opponent-hand)
+        attention_scores 반환 레이아웃 (41개, CLS 제외):
+          [0-12]   AI 자신의 카드   (opponent-hand)
           [13-25]  상대 (인간) 카드 (player-hand)
-          [26]     phase 토큰
-          [27]     deck 토큰
+          [26-38]  constraint 토큰  (화면에 표시 안 함)
+          [39]     phase 토큰
+          [40]     deck 토큰
+
+        정규화는 화면에 보이는 카드 26개([0-25]) 기준으로만 수행한다 — 보이지 않는
+        constraint/phase/deck 토큰을 분모에 섞으면 표시되는 attention %가 왜곡되기 때문.
         """
         import torch.nn.functional as F
         from app.game.constants import MAX_HAND_SIZE
@@ -85,8 +90,8 @@ class ModelLoader:
         last_layer = self.policy.encoder.transformer.layers[-1]
 
         def _hook(module, inp, out):
-            captured['src'] = inp[0].detach().clone()   # (batch, 29, token_dim)
-            captured['out'] = out.detach().clone()       # (batch, 29, token_dim)
+            captured['src'] = inp[0].detach().clone()   # (batch, 42, token_dim)
+            captured['out'] = out.detach().clone()       # (batch, 42, token_dim)
 
         # Also hook encoder to capture opponent_per_pos for belief distribution
         captured_enc = {}
@@ -105,27 +110,32 @@ class ModelLoader:
             hook.remove()
             enc_hook.remove()
 
-        scores = [0.0] * 28   # 28 = 29 tokens minus CLS
+        # 41 = 42 tokens(CLS + my13 + opp13 + constraint13 + phase + deck) minus CLS
+        scores = [0.0] * 41
         if 'out' in captured and 'src' in captured:
             position = int(action[0, 1].item())
             # CLS offset: opp tokens start at index 14 (1 CLS + 13 my cards)
             opp_token_idx = 1 + MAX_HAND_SIZE + position   # 1 + 13 + pos = 14+pos
 
             target_out = captured['out'][0, opp_token_idx]   # (token_dim,)
-            src_tokens  = captured['src'][0]                  # (29, token_dim)
+            src_tokens  = captured['src'][0]                  # (42, token_dim)
 
-            # 코사인 유사도: target 출력 vs 모든 입력 토큰 (CLS 제외 → 1:29)
-            non_cls_src = src_tokens[1:]                          # (28, token_dim)
+            # 코사인 유사도: target 출력 vs 모든 입력 토큰 (CLS 제외 → 1:41)
+            non_cls_src = src_tokens[1:]                          # (41, token_dim)
             target_norm = F.normalize(target_out.unsqueeze(0), dim=-1)   # (1, D)
-            src_norm    = F.normalize(non_cls_src, dim=-1)               # (28, D)
-            raw_scores  = (target_norm @ src_norm.T).squeeze(0)          # (28,)
+            src_norm    = F.normalize(non_cls_src, dim=-1)               # (41, D)
+            raw_scores  = (target_norm @ src_norm.T).squeeze(0)          # (41,)
 
-            # target 자신(opp_token_idx-1 in non-CLS space) 점수 제거
+            # 화면에 보이는 카드 토큰 26개(my13 + opp13)만 정규화 기준으로 사용
+            card_tokens = 2 * MAX_HAND_SIZE   # 26
+
+            # target 자신(opp_token_idx-1 in non-CLS space) 점수는 카드 영역 최솟값으로 눌러 제거
             self_idx_no_cls = opp_token_idx - 1
-            raw_scores[self_idx_no_cls] = raw_scores.min()
+            raw_scores[self_idx_no_cls] = raw_scores[:card_tokens].min()
 
-            # [0, 1] 정규화
-            s_min, s_max = raw_scores.min(), raw_scores.max()
+            # [0, 1] 정규화 — 분모를 보이는 카드 26개로 한정 (안 보이는 토큰 제외)
+            card_scores = raw_scores[:card_tokens]
+            s_min, s_max = card_scores.min(), card_scores.max()
             if (s_max - s_min).item() > 1e-6:
                 raw_scores = (raw_scores - s_min) / (s_max - s_min)
             else:
