@@ -4,9 +4,11 @@ name: Release
 #   1. Builds the Docker image with semver tags (v1.1.0, 1.1, 1, latest).
 #   2. Creates a GitHub Release with auto-generated notes.
 #
-# The model checkpoint (model.pt) is NOT in the repo, so it is not attached here.
-# Upload it once per release from a machine that has it:
-#   gh release upload <tag> checkpoints/model.pt --repo rocknroll17/davinci-code-server
+# The model is NOT in git. It lives as a GHCR OCI artifact (the source of truth):
+#   ghcr.io/<owner>/davinci-model:<MODEL_TAG>   (publish with scripts/publish_model.sh)
+# This workflow oras-pulls that artifact into the build context so the model is
+# baked into the image — deploy then needs no mount and no separate model fetch.
+# Pin the model version with repo variable MODEL_TAG (defaults to "latest").
 
 on:
   push:
@@ -47,6 +49,18 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up ORAS
+        uses: oras-project/setup-oras@v1
+
+      - name: Pull model artifact into build context (bake into image)
+        env:
+          MODEL_TAG: ${{ vars.MODEL_TAG || 'latest' }}
+        run: |
+          mkdir -p checkpoints
+          oras pull "${REGISTRY}/${{ github.repository_owner }}/davinci-model:${MODEL_TAG}" -o checkpoints
+          test -f checkpoints/model.pt
+          echo "Baked model: davinci-model:${MODEL_TAG} ($(du -h checkpoints/model.pt | cut -f1))"
 
       - name: Extract image metadata (semver tags)
         id: meta

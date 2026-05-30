@@ -3,9 +3,9 @@ venv/
 .venv/
 __pycache__/
 *.pyc
-*.pt
 *.pth
-checkpoints/
+checkpoints/*
+!checkpoints/model.pt
 *.log
 *.bak
 .vscode/

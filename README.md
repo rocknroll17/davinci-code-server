@@ -150,23 +150,28 @@ Client (Browser)
 
 ## Docker
 
-A prebuilt image is published to GitHub Container Registry on every release.
+A prebuilt image is published to GitHub Container Registry on every release, with
+**the model baked in** — so deploy is just pull-and-run, no mount, no separate download.
 
-> **The model checkpoint is NOT baked into the image** (`*.pt` is git-/docker-ignored).
-> It ships as a **GitHub Release asset**; download it and mount a `checkpoints/`
-> directory containing `model.pt` at runtime.
+### Where the model lives
 
-### Model weights
+The model is **not** in git. It is versioned independently as a **GHCR OCI artifact**
+(the source of truth), since it changes on its own cadence (retraining):
 
-`model.pt` is attached to each [GitHub Release](https://github.com/rocknroll17/davinci-code-server/releases).
-Grab it into a local `checkpoints/` dir:
+```
+ghcr.io/rocknroll17/davinci-model:<version>   (+ :latest)
+```
+
+The release build (`.github/workflows/release.yml`) pulls this artifact with
+[ORAS](https://oras.land/) and bakes `model.pt` into the server image. Publish a new
+model with [`scripts/publish_model.sh`](scripts/publish_model.sh):
 
 ```bash
-mkdir -p checkpoints
-gh release download --repo rocknroll17/davinci-code-server --pattern model.pt --dir checkpoints
-# or: curl -L -o checkpoints/model.pt \
-#   https://github.com/rocknroll17/davinci-code-server/releases/latest/download/model.pt
+echo "$GHCR_TOKEN" | oras login ghcr.io -u <user> --password-stdin   # needs write:packages
+scripts/publish_model.sh checkpoints/model.pt 0.3.0                  # pushes :0.3.0 and :latest
 ```
+
+Pin which model version a build bakes with the repo variable `MODEL_TAG` (default `latest`).
 
 ### Pull and run
 
@@ -179,21 +184,23 @@ docker run -d --gpus all \
     --name davinci-server \
     --restart unless-stopped \
     -p "${PORT}:6000" \
-    -v "$(pwd)/checkpoints:/app/checkpoints:ro" \
     ghcr.io/rocknroll17/davinci-code-server:latest
 ```
 
-Then open `http://localhost:${PORT}` (AI mode at `/ai_game`). The container port
-stays 6000; only the host side of `-p` changes — so it never collides with other
-services (e.g. another container on 6000). `--gpus all` runs inference on the GPU
-(requires the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html));
+Then open `http://localhost:${PORT}`. The container port stays 6000; only the host
+side of `-p` changes — so it never collides with other services. `--gpus all` runs
+inference on the GPU (requires the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html));
 drop the flag to fall back to CPU.
 
 ### Build locally
 
+The Dockerfile bakes `checkpoints/model.pt`, so pull the model artifact first:
+
 ```bash
+oras pull ghcr.io/rocknroll17/davinci-model:latest -o checkpoints
 docker build -t davinci-server .
-docker run -d --gpus all -p "${PORT:-6000}:6000" -v "$(pwd)/checkpoints:/app/checkpoints:ro" davinci-server
+docker run -d --gpus all -p "${PORT:-6000}:6000" davinci-server
 ```
 
 ## License
