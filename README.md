@@ -6,6 +6,10 @@
 [![GHCR](https://img.shields.io/badge/ghcr.io-davinci--code--server-2ea44f?logo=docker&logoColor=white)](https://github.com/rocknroll17/davinci-code-server/pkgs/container/davinci-code-server)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+> **▶ [Play vs the AI in your browser](https://rocknroll17.github.io/davinci-code-server/)** —
+> the trained policy net runs 100% client-side (ONNX + onnxruntime-web), no backend.
+> Source in [`docs/`](docs/); re-export the model with [`scripts/export_onnx.py`](scripts/export_onnx.py).
+
 An online game server for the Da Vinci Code board game.  
 Built with **FastAPI** + **SSE (Server-Sent Events)** for real-time game event streaming.  
 Supports AI opponents powered by a trained RL model.
