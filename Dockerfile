@@ -1,6 +1,6 @@
 # Da Vinci Code — Game Server (FastAPI + uvicorn)
 # README 기준 Python 3.10
-FROM python:3.10-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
