@@ -6,6 +6,7 @@ import random
 import numpy as np
 
 from app.schemas.observation import Observation, ActionMask
+from app.core.config import settings
 from app.core.model_loader import model_loader
 from app.services.game_engine import PendingCard
 from app.game.cards.card import Card
@@ -212,24 +213,30 @@ class AIPlayer(Player):
         return random.choice(valid_positions)
     
     def guess_action(self, engine: "GameEngine") -> Tuple[int, int]:
-        """추측할 (위치, 값) 결정 + 추론 시각화 데이터 수집"""
+        """추측할 (위치, 값) 결정. ENABLE_REASONING이면 시각화 데이터도 수집."""
         obs = Observation.from_engine(engine, self.id, self.device)
         mask = ActionMask.from_engine(engine, self.id, self.device)
 
-        try:
-            action, reasoning = model_loader.get_action_with_reasoning(obs.to_dict(), mask.to_dict())
-            self._last_reasoning = reasoning
-            # AI 자신의 패를 추론 페이로드에 포함 (실제 값 포함 — AI는 자기 패를 앎)
-            self._last_reasoning['ai_hand'] = [
-                {
-                    'position': i,
-                    'color': int(card.color),
-                    'value': int(card.value),
-                    'is_revealed': card.is_revealed
-                }
-                for i, card in enumerate(self._hand)
-            ]
-        except Exception:
+        if settings.ENABLE_REASONING:
+            try:
+                action, reasoning = model_loader.get_action_with_reasoning(obs.to_dict(), mask.to_dict())
+                self._last_reasoning = reasoning
+                # AI 자신의 패를 추론 페이로드에 포함 (실제 값 포함 — AI는 자기 패를 앎)
+                self._last_reasoning['ai_hand'] = [
+                    {
+                        'position': i,
+                        'color': int(card.color),
+                        'value': int(card.value),
+                        'is_revealed': card.is_revealed
+                    }
+                    for i, card in enumerate(self._hand)
+                ]
+            except Exception:
+                action, _, _ = model_loader.get_action(obs.to_dict(), mask.to_dict())
+                self._last_reasoning = None
+        else:
+            # 운영 모드: 추론 데이터 없이 바로 행동.
+            # GuessHandler는 _last_reasoning이 None이면 ai_reasoning 발송/확인 대기를 건너뜀.
             action, _, _ = model_loader.get_action(obs.to_dict(), mask.to_dict())
             self._last_reasoning = None
 
