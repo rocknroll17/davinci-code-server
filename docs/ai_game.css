@@ -1,0 +1,460 @@
+/* ============== AI 추론 사이드 패널 (ai_game.html 전용) ============== */
+
+#ai-reasoning-panel {
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 300px;
+    transition: width 0.2s ease;
+    max-height: 90vh;
+    background: rgba(10, 10, 30, 0.97);
+    border: 1.5px solid rgba(233, 69, 96, 0.4);
+    border-right: none;
+    border-radius: 16px 0 0 16px;
+    z-index: 900;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -4px 0 40px rgba(0, 0, 0, 0.6);
+    animation: panelSlideIn 0.25s ease;
+    overflow: hidden;
+}
+
+#ai-reasoning-panel.hidden {
+    display: none;
+}
+
+@keyframes panelSlideIn {
+    from { transform: translateY(-50%) translateX(40px); opacity: 0; }
+    to   { transform: translateY(-50%) translateX(0);    opacity: 1; }
+}
+
+.ai-panel-header {
+    padding: 0.8rem 1.1rem;
+    border-bottom: 1px solid rgba(233, 69, 96, 0.2);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: #e0e0e0;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.ai-brain-icon {
+    font-size: 1.1rem;
+    display: inline-block;
+    animation: brainPulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes brainPulse {
+    from { transform: scale(1);   }
+    to   { transform: scale(1.3); }
+}
+
+.ai-panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.8rem 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.ai-panel-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.ai-panel-section-label {
+    font-size: 0.68rem;
+    color: rgba(224, 224, 224, 0.5);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.ai-panel-section-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    font-size: 0.68rem;
+    color: rgba(224, 224, 224, 0.5);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+#ai-panel-reveal-toggle {
+    font-size: 0.62rem;
+    padding: 0.18rem 0.55rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 193, 7, 0.4);
+    background: rgba(255, 193, 7, 0.08);
+    color: rgba(255, 193, 7, 0.85);
+    cursor: pointer;
+    letter-spacing: 0;
+    text-transform: none;
+    transition: background 0.15s;
+    white-space: nowrap;
+}
+
+#ai-panel-reveal-toggle:hover  { background: rgba(255, 193, 7, 0.22); }
+#ai-panel-reveal-toggle.active { background: rgba(255, 193, 7, 0.3); color: #ffc107; border-color: #ffc107; }
+
+.ai-mini-hand {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 3px;
+}
+
+.ai-mini-card {
+    width: var(--mini-card-w, 34px);
+    height: var(--mini-card-h, 50px);
+    border-radius: 5px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    position: relative;
+    border: 1.5px solid rgba(255, 255, 255, 0.08);
+    transition: box-shadow 0.2s;
+}
+
+.ai-mini-card.mini-black { background: #1e1e1e; color: #e0e0e0; }
+.ai-mini-card.mini-white { background: #e8e8e8; color: #1a1a1a; }
+
+.ai-mini-card .mini-pos {
+    font-size: 0.54rem;
+    opacity: 0.45;
+    line-height: 1;
+}
+
+.ai-mini-card .mini-val {
+    font-size: var(--mini-val-size, 1rem);
+    font-weight: 800;
+    line-height: 1;
+}
+
+.ai-mini-card.mini-hidden .mini-val { opacity: 0.2; }
+
+.ai-mini-card.mini-attention {
+    box-shadow: 0 0 0 2px rgba(255, 193, 7, 0.85), 0 0 10px rgba(255, 193, 7, 0.4);
+}
+
+.ai-mini-card.mini-target {
+    box-shadow: 0 0 0 2px #e94560, 0 0 14px rgba(233, 69, 96, 0.8);
+    animation: miniTargetPulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes miniTargetPulse {
+    from { box-shadow: 0 0 0 2px #e94560, 0 0  8px rgba(233, 69, 96, 0.6); }
+    to   { box-shadow: 0 0 0 3px #ff1a40, 0 0 20px rgba(255, 26, 64, 0.9); }
+}
+
+.ai-panel-divider {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.07);
+    margin: 0.2rem 0;
+}
+
+.ai-panel-conclusion {
+    background: rgba(233, 69, 96, 0.1);
+    border: 1px solid rgba(233, 69, 96, 0.3);
+    border-radius: 8px;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.88rem;
+    color: #e94560;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.4;
+}
+
+.ai-panel-scores { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.ai-scores-narrative {
+    font-size: 0.75rem;
+    color: #ffe082;
+    background: rgba(255, 224, 130, 0.08);
+    border-left: 2px solid #ffc107;
+    padding: 0.4rem 0.5rem;
+    border-radius: 0 4px 4px 0;
+    line-height: 1.45;
+    word-break: keep-all;
+}
+
+.ai-scores-header {
+    font-size: 0.67rem;
+    color: rgba(255,255,255,0.45);
+    font-style: italic;
+    margin-bottom: 0.1rem;
+}
+
+.ai-score-row {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 0.74rem;
+    color: #e0e0e0;
+}
+
+.ai-score-top {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.ai-score-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ai-score-target-mark {
+    font-size: 0.65rem;
+    color: #e94560;
+    flex-shrink: 0;
+    font-weight: bold;
+}
+
+.ai-score-bar-bg {
+    height: 5px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.ai-score-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #ffc107, #e94560);
+}
+
+.ai-score-ai-card .ai-score-bar-fill {
+    background: linear-gradient(90deg, #42a5f5, #7c4dff);
+}
+
+.ai-score-target-row .ai-score-label {
+    color: #ff8a80;
+    font-weight: bold;
+}
+
+.ai-score-value {
+    width: 28px;
+    text-align: right;
+    font-size: 0.66rem;
+    opacity: 0.65;
+    flex-shrink: 0;
+}
+
+.ai-panel-footer {
+    padding: 0.75rem 1rem;
+    border-top: 1px solid rgba(233, 69, 96, 0.2);
+    flex-shrink: 0;
+}
+
+/* ── Belief 확률 툴팁 ─────────────────────────────────────────── */
+.ai-belief-tooltip {
+    position: fixed;
+    z-index: 9999;
+    background: #1a1a2e;
+    border: 1px solid rgba(100, 180, 255, 0.35);
+    border-radius: 10px;
+    padding: 0.7rem 0.85rem;
+    min-width: 160px;
+    max-width: 320px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.55);
+    pointer-events: none;
+}
+.ai-belief-tooltip.hidden { display: none; }
+
+.belief-tooltip-title {
+    font-size: 0.73rem;
+    color: #90caf9;
+    font-weight: bold;
+    margin-bottom: 0.55rem;
+    white-space: nowrap;
+}
+
+.belief-tooltip-empty {
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.35);
+    font-style: italic;
+}
+
+.belief-chart {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.belief-bars-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 5px;
+}
+
+.belief-bar-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    min-width: 22px;
+}
+
+.belief-bar-pct {
+    font-size: 0.58rem;
+    color: rgba(255,255,255,0.55);
+    white-space: nowrap;
+    line-height: 1;
+}
+
+.belief-bar-wrap {
+    width: 16px;
+    height: 52px;        /* fixed height container — bar grows from bottom */
+    display: flex;
+    align-items: flex-end;
+    background: rgba(255,255,255,0.04);
+    border-radius: 3px 3px 0 0;
+}
+
+.belief-bar-fill {
+    width: 100%;
+    background: linear-gradient(180deg, #42a5f5, #1565c0);
+    border-radius: 3px 3px 0 0;
+    min-height: 2px;
+    transition: height 0.15s ease;
+}
+
+.belief-bar-fill.belief-bar-true {
+    background: linear-gradient(180deg, #69f0ae, #00897b);
+    box-shadow: 0 0 6px rgba(105, 240, 174, 0.6);
+}
+
+.belief-bar-label {
+    font-size: 0.65rem;
+    color: rgba(255,255,255,0.65);
+    line-height: 1;
+}
+
+.mini-belief-hoverable {
+    cursor: crosshair;
+}
+.mini-belief-hoverable:hover {
+    outline: 1.5px solid rgba(100, 180, 255, 0.7);
+    transform: scale(1.12);
+    z-index: 2;
+}
+/* ─────────────────────────────────────────────────────────────── */
+
+#ai-reasoning-confirm-btn {
+    width: 100%;
+    padding: 0.6rem;
+    border-radius: 8px;
+    border: 1.5px solid #e94560;
+    background: rgba(233, 69, 96, 0.1);
+    color: #fff;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s;
+    letter-spacing: 0.05em;
+}
+
+#ai-reasoning-confirm-btn:hover  { background: #e94560; }
+#ai-reasoning-confirm-btn:active { transform: scale(0.97); }
+
+/* ============== 비밀번호 게이트 화면 ============== */
+
+#password-gate {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-color, #1a1a2e);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+#password-gate.hidden {
+    display: none;
+}
+
+.password-gate-card {
+    background: var(--card-bg, #16213e);
+    border: 1px solid rgba(233, 69, 96, 0.3);
+    border-radius: 16px;
+    padding: 2.5rem 3rem;
+    text-align: center;
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+    min-width: 320px;
+}
+
+.password-gate-card h2 {
+    color: var(--text-color, #e0e0e0);
+    margin-bottom: 0.4rem;
+    font-size: 1.4rem;
+}
+
+.password-gate-card p {
+    color: rgba(224, 224, 224, 0.55);
+    font-size: 0.85rem;
+    margin-bottom: 1.6rem;
+}
+
+#gate-password-input {
+    width: 100%;
+    padding: 0.7rem 1rem;
+    border-radius: 8px;
+    border: 1.5px solid rgba(233, 69, 96, 0.4);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-color, #e0e0e0);
+    font-size: 1rem;
+    text-align: center;
+    margin-bottom: 1.2rem;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+
+#gate-password-input:focus {
+    border-color: var(--accent-color, #e94560);
+}
+
+#gate-password-input.error {
+    border-color: #ff4444;
+    animation: shake 0.35s ease;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%       { transform: translateX(-6px); }
+    40%       { transform: translateX(6px); }
+    60%       { transform: translateX(-4px); }
+    80%       { transform: translateX(4px); }
+}
+
+#gate-confirm-btn {
+    width: 100%;
+    padding: 0.75rem;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent-color, #e94560);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+}
+
+#gate-confirm-btn:hover  { background: #c73652; }
+#gate-confirm-btn:active { transform: scale(0.97); }
+
+#gate-error-msg {
+    color: #ff6b6b;
+    font-size: 0.82rem;
+    margin-top: 0.8rem;
+    min-height: 1.1em;
+}
