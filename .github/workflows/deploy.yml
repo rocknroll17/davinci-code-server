@@ -4,18 +4,19 @@ name: Deploy
 # Release is published, or on-demand via workflow_dispatch. Modeled on the
 # QR-Bloom deploy: GitHub Actions SSHes into the server and swaps the container.
 #
+# The model is baked into the image (GHCR OCI artifact -> image at build time),
+# so deploy just pulls the image and runs it — no model download, no mount.
+#
 # The server is expected to have:
 #   - Docker with the NVIDIA Container Toolkit (--gpus all works)
 #   - The deploy SSH key registered in the deploy user's ~/.ssh/authorized_keys
-#   - A writable checkpoints directory at DEPLOY_CHECKPOINTS_DIR
 #
 # Required repo secrets:
-#   DEPLOY_HOST             SSH host reachable from GitHub (public IP / hostname)
-#   DEPLOY_USER             SSH user on the server
-#   DEPLOY_SSH_KEY          private SSH key (matching an authorized_keys entry)
-#   DEPLOY_CHECKPOINTS_DIR  host dir mounted to /app/checkpoints (holds model.pt)
+#   DEPLOY_HOST    SSH host reachable from GitHub (public IP / hostname)
+#   DEPLOY_USER    SSH user on the server
+#   DEPLOY_SSH_KEY private SSH key (matching an authorized_keys entry)
 # Optional:
-#   DEPLOY_PORT             host port to publish (defaults to 6000)
+#   DEPLOY_PORT    host port to publish (defaults to 6000)
 
 on:
   release:
@@ -46,42 +47,22 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           INPUT_TAG: ${{ github.event.inputs.tag }}
-          CHECKPOINTS_DIR: ${{ secrets.DEPLOY_CHECKPOINTS_DIR }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: 22
-          envs: RELEASE_TAG,INPUT_TAG,CHECKPOINTS_DIR,DEPLOY_PORT
+          envs: RELEASE_TAG,INPUT_TAG,DEPLOY_PORT
           script: |
             set -e
             TAG="${INPUT_TAG:-${RELEASE_TAG:-latest}}"
             REPO="rocknroll17/davinci-code-server"
             IMAGE="ghcr.io/${REPO}:${TAG}"
-            CHECKPOINTS="${CHECKPOINTS_DIR}"
             PORT="${DEPLOY_PORT:-6000}"
 
-            echo "==> Ensuring model.pt in ${CHECKPOINTS}"
-            # model.pt ships as a GitHub Release asset (public repo, no auth).
-            # On a release with a model.pt asset, refresh it; otherwise keep the
-            # existing file. Atomic replace via .tmp + mv.
-            mkdir -p "${CHECKPOINTS}"
-            if [ "${TAG}" = "latest" ]; then
-              MODEL_URL="https://github.com/${REPO}/releases/latest/download/model.pt"
-            else
-              MODEL_URL="https://github.com/${REPO}/releases/download/${TAG}/model.pt"
-            fi
-            if curl -fsSL -o "${CHECKPOINTS}/model.pt.tmp" "${MODEL_URL}"; then
-              mv "${CHECKPOINTS}/model.pt.tmp" "${CHECKPOINTS}/model.pt"
-              echo "  model.pt refreshed from ${TAG}"
-            elif [ -f "${CHECKPOINTS}/model.pt" ]; then
-              rm -f "${CHECKPOINTS}/model.pt.tmp"
-              echo "  no model.pt asset on ${TAG}; keeping existing"
-            else
-              echo "  ERROR: no model.pt asset on ${TAG} and none present locally"
-              exit 1
-            fi
+            # The model is baked into the image (GHCR OCI artifact -> image at build).
+            # No model download and no checkpoints mount here.
 
             echo "==> Pulling ${IMAGE}"
             # release.yml fires on the same tag and races us. Retry until the
@@ -106,7 +87,6 @@ jobs:
               --restart unless-stopped \
               --gpus all \
               -p "${PORT}:6000" \
-              -v "${CHECKPOINTS}:/app/checkpoints:ro" \
               --log-driver json-file \
               --log-opt max-size=10m \
               --log-opt max-file=3 \

@@ -10,13 +10,15 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 소스 복사
+# 소스 + 모델 복사.
+# model.pt는 git이 아니라 GHCR OCI 아티팩트(ghcr.io/<owner>/davinci-model)에서
+# 빌드 직전에 oras로 checkpoints/model.pt 에 받아둔다 (.github/workflows/release.yml).
+# .dockerignore가 checkpoints/model.pt만 컨텍스트에 포함하므로 이 COPY로 이미지에 baked.
 COPY . .
 
-# 학습된 모델(.pt)은 .gitignore로 제외돼 이미지에 안 들어감.
-# 실행 시 호스트의 체크포인트를 마운트해야 AI 플레이어가 동작:
-#   docker run -p 6000:6000 -v $(pwd)/checkpoints:/app/checkpoints ...
-VOLUME ["/app/checkpoints"]
+# 모델 누락 방지: oras pull 없이 빌드되면 조용히 깨지지 않게 즉시 실패.
+RUN test -f /app/checkpoints/model.pt || \
+    (echo "ERROR: checkpoints/model.pt 없음. 먼저 받아라: oras pull ghcr.io/<owner>/davinci-model:latest -o checkpoints" && exit 1)
 
 # config.py: HOST=0.0.0.0, PORT=6000
 EXPOSE 6000
