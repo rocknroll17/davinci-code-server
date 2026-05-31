@@ -38,8 +38,8 @@ net runs entirely client-side via ONNX.
 
 ```
                           ┌─────────────────────────────────────────────┐
-Browser ── REST  ───────► │ FastAPI  ─► GameService ─► GameManager       │
-        ◄── SSE  ───────  │   router      (facade)      └─► GameSession   │
+Browser ── REST  ───────► │ FastAPI  ─► GameService ─► GameManager      │
+        ◄── SSE  ───────  │   router      (facade)      └─► GameSession │
         (event stream)    │                                  └─► GameEngine (rules)
                           │                          model_loader ─► policy net
                           └─────────────────────────────────────────────┘
