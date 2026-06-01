@@ -85,7 +85,13 @@ class ObservationEncoder(nn.Module):
         
         # Segment type: my_card=0, opp_card=1, phase=2, deck=3, constraint=4
         self.segment_embed = nn.Embedding(5, token_dim)
-        
+
+        # Shared SLOT position embedding (token_dim), added to my / opp / constraint
+        # tokens alike so that my_i, opp_i and constraint_i share the SAME slot
+        # identity in the attention space (lets attention bind con_i <-> opp_i).
+        # MUST match the training repo (davinci-code-agent) for checkpoints to load.
+        self.slot_pos_embed = nn.Embedding(MAX_HAND_SIZE, token_dim)
+
         # [CLS] token for global state aggregation (BERT-style)
         self.cls_token = nn.Parameter(torch.randn(1, 1, token_dim))
         
@@ -225,22 +231,26 @@ class ObservationEncoder(nn.Module):
         constraint_per_pos = self.constraint_proj(constraint_matrix)  # (batch, 13, token_dim)
         
         # === Build 29 tokens ===
-        
+
+        # Shared slot-position embedding (batch, 13, token_dim) added to my/opp/con
+        # so slot i has the same positional identity across all three token groups.
+        slot_positions = torch.arange(MAX_HAND_SIZE, device=device).unsqueeze(0).expand(batch_size, -1)
+        slot_pe = self.slot_pos_embed(slot_positions)  # (batch, 13, token_dim)
+
         # [1:14] My card tokens
         my_tokens = self._tokenize_hand(my_hand)  # (batch, 13, token_dim)
         my_seg = torch.zeros(batch_size, MAX_HAND_SIZE, dtype=torch.long, device=device)
-        my_tokens = my_tokens + self.segment_embed(my_seg)
-        
+        my_tokens = my_tokens + self.segment_embed(my_seg) + slot_pe
+
         # [14:27] Opponent card tokens
         opp_tokens = self._tokenize_hand(opponent_hand)  # (batch, 13, token_dim)
         opp_seg = torch.ones(batch_size, MAX_HAND_SIZE, dtype=torch.long, device=device)
-        opp_tokens = opp_tokens + self.segment_embed(opp_seg)
+        opp_tokens = opp_tokens + self.segment_embed(opp_seg) + slot_pe
 
-        # [27:40] Constraint tokens — 별도 토큰, opp 슬롯과 1:1 대응
-        # opp와 분리하면 Transformer가 둘의 관계를 스스로 attention으로 학습
+        # [27:40] Constraint tokens — slot_pe 공유로 con_i와 opp_i가 같은 슬롯 좌표
         constraint_tokens = constraint_per_pos  # (batch, 13, token_dim)
         constraint_seg = torch.full((batch_size, MAX_HAND_SIZE), 4, dtype=torch.long, device=device)
-        constraint_tokens = constraint_tokens + self.segment_embed(constraint_seg)
+        constraint_tokens = constraint_tokens + self.segment_embed(constraint_seg) + slot_pe
 
         # [40] PHASE token
         phase_token = self.phase_proj(phase).unsqueeze(1)  # (batch, 1, token_dim)
