@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.1](https://github.com/rocknroll17/davinci-code-server/compare/v0.4.0...v0.4.1) (2026-06-01)
+
+
+### Features
+
+* refresh served model to davinci-model:0.3.1 ([8fb370e](https://github.com/rocknroll17/davinci-code-server/commit/8fb370ee328c624ed2a974872ec0dfdd57191102))
+
+
+### Chores
+
+* pin release to 0.4.1 (model refresh = patch, not minor) ([8d79405](https://github.com/rocknroll17/davinci-code-server/commit/8d79405687f539b7b221742dadb873af92e2f93d))
+
 ## [0.4.0](https://github.com/rocknroll17/davinci-code-server/compare/v0.3.1...v0.4.0) (2026-06-01)
 
 
