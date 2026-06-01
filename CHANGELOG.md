@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/rocknroll17/davinci-code-server/compare/v0.3.1...v0.4.0) (2026-06-01)
+
+
+### Features
+
+* add shared slot positional embedding to encoder ([10b71e5](https://github.com/rocknroll17/davinci-code-server/commit/10b71e59561990134cbb5d3eab0f74e93aa225b5))
+
+
+### Documentation
+
+* refresh README — TOC, architecture diagram, accurate model/flag/API ([a7e63c4](https://github.com/rocknroll17/davinci-code-server/commit/a7e63c46fba751956840a4a6ceea2a062f65aeb5))
+* surface the live demo link in a Try it section (QR-Bloom style) ([90336aa](https://github.com/rocknroll17/davinci-code-server/commit/90336aa6f90e337c9bc8cd89b98171129d3f9544))
+* Updated README.md ([ff9c1eb](https://github.com/rocknroll17/davinci-code-server/commit/ff9c1eb4caeaf11774797a41268d7423e4e818a5))
+
 ## [0.3.1](https://github.com/rocknroll17/davinci-code-server/compare/v0.3.0...v0.3.1) (2026-05-30)
 
 
