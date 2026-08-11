@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://davinci-code.rocknroll17.com/sitemap.xml
