@@ -16,9 +16,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def main() -> None:
     m = importlib.import_module("app.main")
     assert hasattr(m, "app"), "FastAPI app not found in app.main"
-    routes = [r.path for r in m.app.routes if hasattr(r, "path")]
-    assert any(p.startswith("/api") for p in routes), "no /api routes registered"
-    print(f"[smoke] app imports OK — {len(routes)} routes registered")
+    # Starlette >=1.6 no longer flattens include_router() sub-routes into
+    # app.routes, so enumerate paths via the OpenAPI schema instead.
+    paths = list(m.app.openapi()["paths"])
+    assert any(p.startswith("/api") for p in paths), "no /api routes registered"
+    print(f"[smoke] app imports OK — {len(paths)} API paths registered")
 
 
 if __name__ == "__main__":
