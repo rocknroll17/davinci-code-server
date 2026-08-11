@@ -63,6 +63,7 @@ const elements = {
 // `localBus` (an EventTarget) so the unchanged SSE handler bodies below run as-is.
 
 const DV = window.DVEngine;
+const t = window.I18N.t;
 // Fresh EventTarget per game (re-created in connectSSE) so a "새 게임" restart
 // doesn't accumulate duplicate handlers — matching the original fresh-EventSource.
 let localBus = new EventTarget();
@@ -93,7 +94,7 @@ let session = null;  // current LocalSession
 class LocalSession {
     constructor(useModel) {
         this.useModel = useModel;
-        this.message = '플레이어 대기 중...';
+        this.message = t('waitingPlayers');
         // human = players[0] (first), ai = players[1]
         this.human = DV.makeHumanPlayer('human');
         this.ai = DV.makeAIPlayer('ai', useModel);
@@ -107,9 +108,9 @@ class LocalSession {
 
     start() {
         DV.engineSetup(this.engine);
-        this.message = '검정 또는 흰색 카드를 뽑으세요.';
+        this.message = t('drawPrompt');
         // game_start (emit_to_all) — fired after a tick like the server
-        emitEvent('game_start', { message: '게임이 시작되었습니다!', current_player: 0 });
+        emitEvent('game_start', { message: t('gameStarted'), current_player: 0 });
     }
 
     // ===== _build_state (game_session.py) for the human player =====
@@ -157,14 +158,14 @@ class LocalSession {
         let message;
         if (e.game_over) {
             message = (e.winner && e.winner.id === player.id)
-                ? '🎉 축하합니다! 당신이 승리했습니다!'
-                : '😢 아쉽습니다. 상대방이 승리했습니다.';
+                ? t('winMsg')
+                : t('loseMsg');
         } else if (forActor) {
             message = this.message;
         } else if (myTurn) {
             message = this.message;
         } else {
-            message = '⏳ 상대방의 차례입니다. 기다려주세요.';
+            message = t('waitOpponent');
         }
 
         return {
@@ -192,8 +193,8 @@ class LocalSession {
         const result = DV.engineDraw(e, this.human.id, color);
         const valid = result.pending_card.valid_positions;
         this.message = (valid.length !== 1)
-            ? `카드를 배치할 위치를 선택하세요. (${valid.length}곳 가능)`
-            : '카드가 자동으로 배치됩니다.';
+            ? t('choosePlace', { n: valid.length })
+            : t('autoPlace');
         const state = this.buildState(true);
         // DrawEmitter: my_action only
         emitEvent('my_action', {
@@ -212,7 +213,7 @@ class LocalSession {
     humanPlace(color, number, position) {
         const e = this.engine;
         const result = DV.enginePlace(e, this.human.id, color, number, position);
-        this.message = '상대방 카드를 추측하세요.';
+        this.message = t('guessPrompt');
         const state = this.buildState(true);
         // PlaceEmitter: my_action (actor)
         emitEvent('my_action', {
@@ -227,15 +228,14 @@ class LocalSession {
     humanGuess(position, value) {
         const e = this.engine;
         const result = DV.engineGuess(e, this.human.id, position, value);
-        const valueStr = value === 12 ? '조커' : String(value);
         if (result.is_correct) {
             this.message = e.game_over
-                ? '🎉 정답! 게임 종료! 당신이 승리했습니다!'
-                : '✅ 정답! 계속 추측하시겠습니까?';
+                ? t('correctWinEnd')
+                : t('correctContinue');
         } else {
             this.message = e.game_over
-                ? '❌ 틀렸습니다! 카드가 모두 공개되어 게임이 종료됩니다.'
-                : '❌ 틀렸습니다! 상대방 차례입니다.';
+                ? t('wrongGameOver')
+                : t('wrongOppTurn');
         }
         const state = this.buildState(true);
 
@@ -265,9 +265,9 @@ class LocalSession {
             const winnerId = e.winner.id;
             setTimeout(() => {
                 if (winnerId === this.human.id) {
-                    emitEvent('game_over', { winner: e.winner.player_index, message: '🎉 축하합니다! 당신이 승리했습니다!' });
+                    emitEvent('game_over', { winner: e.winner.player_index, message: t('winMsg') });
                 } else {
-                    emitEvent('game_over', { winner: e.winner.player_index, message: '😢 아쉽습니다. 다음에 다시 도전하세요!' });
+                    emitEvent('game_over', { winner: e.winner.player_index, message: t('loseRetry') });
                 }
             }, 2000);
         } else if (!result.is_correct) {
@@ -283,7 +283,7 @@ class LocalSession {
     humanDecision(continueGuessing) {
         const e = this.engine;
         DV.engineDecision(e, this.human.id, continueGuessing);
-        this.message = continueGuessing ? '🎯 계속 추측하세요!' : '턴을 종료했습니다.';
+        this.message = continueGuessing ? t('keepGuessing') : t('turnEnded');
         const state = this.buildState(true);
         emitEvent('my_action', {
             action: 'decision',
@@ -343,12 +343,12 @@ class LocalSession {
             const position = valid.length === 1 ? valid[0] : valid[Math.floor(Math.random() * valid.length)];
             const placeResult = DV.enginePlace(e, ai.id, color, pending.value, position);
             // PlaceEmitter.emit_to_opponent_only -> opponent_action (place)
-            const colorName = color === 0 ? '검정' : '흰색';
+            const colorName = color === 0 ? t('black') : t('white');
             emitEvent('opponent_action', {
                 action: 'place',
                 color: placeResult.placed_card.color,
                 position: placeResult.position,
-                message: `상대방이 ${colorName} 카드를 위치 ${placeResult.position}에 배치했습니다.`,
+                message: t('oppPlaced', { color: colorName, pos: placeResult.position }),
             });
         } else if (e.phase === DV.Phase.GUESS) {
             await this.aiGuess(ai);
@@ -356,7 +356,7 @@ class LocalSession {
             const action = await DV.getAction(e, ai.id);
             const continueGuessing = action.decision === 1;
             DV.engineDecision(e, ai.id, continueGuessing);
-            const msg = continueGuessing ? '⏳ 상대방이 계속 추측합니다.' : '상대방이 턴을 종료했습니다.';
+            const msg = continueGuessing ? t('oppContinues') : t('oppEndedTurn');
             // DecisionEmitter.emit_to_opponent_only -> opponent_action (decision)
             emitEvent('opponent_action', { action: 'decision', continue: continueGuessing, message: msg });
             if (!continueGuessing) {
@@ -364,9 +364,7 @@ class LocalSession {
                 setTimeout(() => {
                     emitEvent('turn_change', {
                         your_turn: true,
-                        message: deckEmpty
-                            ? '🎯 당신의 차례입니다! 상대방 카드를 추측하세요.'
-                            : '🎯 당신의 차례입니다! 카드를 뽑으세요.',
+                        message: deckEmpty ? t('yourTurnGuess') : t('yourTurnDraw'),
                     });
                 }, 2000);
             }
@@ -407,7 +405,7 @@ class LocalSession {
         await new Promise((resolve) => setTimeout(resolve, 800));
 
         const result = DV.engineGuess(e, ai.id, position, value);
-        const valueStr = value === 12 ? '조커' : String(value);
+        const valueStr = value === 12 ? t('joker') : String(value);
 
         // GuessEmitter opponent_data (AI is actor -> human gets opponent_action)
         const oppData = {
@@ -415,7 +413,7 @@ class LocalSession {
             position: result.position,
             value: value,
             correct: result.is_correct,
-            message: `상대방이 위치 ${result.position}을(를) ${valueStr}로 추측했습니다.`,
+            message: t('oppGuessed', { pos: result.position, val: valueStr }),
         };
         if (result.is_correct && result.card) {
             oppData.revealed_position = result.position;
@@ -433,10 +431,10 @@ class LocalSession {
             setTimeout(() => {
                 if (winnerId === ai.id) {
                     // AI won -> loser (human) gets defeat
-                    emitEvent('game_over', { winner: e.winner.player_index, message: '😢 아쉽습니다. 다음에 다시 도전하세요!' });
+                    emitEvent('game_over', { winner: e.winner.player_index, message: t('loseRetry') });
                 } else {
                     // AI lost -> human gets victory
-                    emitEvent('game_over', { winner: e.winner.player_index, message: '🎉 축하합니다! 당신이 승리했습니다!' });
+                    emitEvent('game_over', { winner: e.winner.player_index, message: t('winMsg') });
                 }
             }, 2000);
         } else if (!result.is_correct) {
@@ -444,9 +442,7 @@ class LocalSession {
             setTimeout(() => {
                 emitEvent('turn_change', {
                     your_turn: true,
-                    message: deckEmpty
-                        ? '🎯 당신의 차례입니다! 상대방 카드를 추측하세요.'
-                        : '🎯 당신의 차례입니다! 카드를 뽑으세요.',
+                    message: deckEmpty ? t('yourTurnGuess') : t('yourTurnDraw'),
                 });
             }, 2000);
         }
@@ -494,10 +490,10 @@ async function localApi(endpoint, method, body) {
         return { game_id: 'pvp-disabled', player_id: 'pvp-disabled' };
     }
     if (path === '/api/lobby/join') {
-        throw new Error('PvP는 이 페이지에서 지원되지 않습니다.');
+        throw new Error(t('pvpUnsupported'));
     }
     if (path === '/api/game/state') {
-        if (!session) throw new Error('게임이 없습니다.');
+        if (!session) throw new Error(t('noGame'));
         return session.buildState(false);
     }
     if (path === '/api/game/draw') {
@@ -654,11 +650,11 @@ function connectSSE() {
             selectedGuessPosition = null;
             const position = data.position;
             if (data.correct) {
-                showMessage('✅ 정답!');
+                showMessage(t('correctShort'));
                 highlightOpponentCard(position, 'guessed-correct');
                 flipOpponentCard(position, data.value);
             } else {
-                showMessage('❌ 틀렸습니다!');
+                showMessage(t('wrongShort'));
                 shakeOpponentCard(position);
                 if (data.revealed_card) {
                     setTimeout(() => { flipMyCard(data.revealed_card.position); }, 500);
@@ -716,7 +712,7 @@ async function createAIGame(useModel = true) {
 
 async function joinGame() {
     const inputGameId = elements.gameIdInput?.value?.trim();
-    if (!inputGameId) { showMessage('⚠️ 게임 ID를 입력하세요'); return; }
+    if (!inputGameId) { showMessage(t('enterGameId')); return; }
     try {
         const result = await apiCall('/api/lobby/join', 'POST', { game_id: inputGameId });
         if (result) {
@@ -768,7 +764,7 @@ async function guess() {
     if (!gameState || !gameId || !playerId || isLoading) return;
     const position = selectedGuessPosition;
     const value = parseInt(elements.guessValue.value);
-    if (position === null || isNaN(value)) { showMessage('⚠️ 카드와 숫자를 선택하세요'); return; }
+    if (position === null || isNaN(value)) { showMessage(t('selectCardValue')); return; }
     if (elements.guessBtn) elements.guessBtn.disabled = true;
     try {
         const result = await apiCall('/api/game/guess', 'POST', { game_id: gameId, player_id: playerId, position, value });
@@ -898,7 +894,7 @@ function revealMyCard(position) {
 }
 
 function translatePhase(phase) {
-    const map = { waiting: '대기중', draw: '뽑기', guess: '추측', decision: '선택', place: '배치' };
+    const map = { waiting: t('phaseWaiting'), draw: t('phaseDraw'), guess: t('phaseGuess'), decision: t('phaseDecision'), place: t('phasePlace') };
     return map[phase] || phase;
 }
 
@@ -972,7 +968,7 @@ function renderPlaceSlots() {
     const drawnCardPreview = document.createElement('div');
     drawnCardPreview.className = 'drawn-card-preview';
     drawnCardPreview.classList.add(pendingCard.color === 0 ? 'card-black' : 'card-white');
-    drawnCardPreview.innerHTML = `<span class="label">뽑은 카드</span><span class="value">${pendingCard.value === 12 ? '-' : pendingCard.value}</span>`;
+    drawnCardPreview.innerHTML = `<span class="label">${t('drawnCard')}</span><span class="value">${pendingCard.value === 12 ? '-' : pendingCard.value}</span>`;
     elements.placeSlots.appendChild(drawnCardPreview);
     const separator = document.createElement('div');
     separator.className = 'place-separator';
@@ -1042,46 +1038,48 @@ function preparePreShuffledDeck(black, white) {
 
 function updateGuessSelect() {
     if (!elements.guessValue) return;
-    elements.guessValue.innerHTML = '<option value="">숫자 선택...</option>';
+    elements.guessValue.innerHTML = `<option value="">${t('selectNumber')}</option>`;
     for (let i = 0; i <= 12; i++) {
         const opt = document.createElement('option');
         opt.value = i;
-        opt.textContent = i === 12 ? '- 조커' : i;
+        opt.textContent = i === 12 ? t('jokerOption') : i;
         elements.guessValue.appendChild(opt);
     }
 }
 
 function showGameOver() {
     elements.gameOverOverlay?.classList.remove('hidden');
-    if (gameState.message?.includes('승리')) {
-        elements.gameOverTitle.textContent = '🎉 승리!';
+    // winner is the player_index (0 = human) — language-independent, unlike
+    // the old message-substring check which broke under i18n.
+    if (gameState.winner === 0) {
+        elements.gameOverTitle.textContent = t('victory');
         elements.gameOverTitle.style.color = '#4ecca3';
     } else {
-        elements.gameOverTitle.textContent = '💀 패배';
+        elements.gameOverTitle.textContent = t('defeat');
         elements.gameOverTitle.style.color = '#e94560';
     }
-    elements.gameOverMessage.textContent = gameState.message || '게임 종료';
+    elements.gameOverMessage.textContent = gameState.message || t('gameOverTitle');
 }
 
 function showGameOverWithData(data) {
     elements.gameOverOverlay?.classList.remove('hidden');
-    if (data.message?.includes('승리')) {
-        elements.gameOverTitle.textContent = '🎉 승리!';
+    if (data.winner === 0) {
+        elements.gameOverTitle.textContent = t('victory');
         elements.gameOverTitle.style.color = '#4ecca3';
     } else {
-        elements.gameOverTitle.textContent = '💀 패배';
+        elements.gameOverTitle.textContent = t('defeat');
         elements.gameOverTitle.style.color = '#e94560';
     }
-    elements.gameOverMessage.textContent = data.message || '게임 종료';
+    elements.gameOverMessage.textContent = data.message || t('gameOverTitle');
     showMessage(data.message);
 }
 
 function showDisconnectOverlay(message) {
     if (eventSource) { eventSource = null; }
     elements.gameOverOverlay?.classList.remove('hidden');
-    elements.gameOverTitle.textContent = '🚪 상대방 퇴장';
+    elements.gameOverTitle.textContent = t('oppLeftTitle');
     elements.gameOverTitle.style.color = '#ffc107';
-    elements.gameOverMessage.textContent = message || '상대방이 게임을 나갔습니다.';
+    elements.gameOverMessage.textContent = message || t('oppLeftMsg');
     showMessage(message);
 }
 
@@ -1099,6 +1097,15 @@ document.getElementById('play-vs-ai-btn')?.addEventListener('click', () => creat
 document.getElementById('play-vs-random-btn')?.addEventListener('click', () => createAIGame(false));
 
 elements.gameIdInput?.addEventListener('keypress', (e) => { if (e.key === 'Enter') joinGame(); });
+
+// Re-render language-dependent dynamic UI when the user toggles KO/EN.
+// Static text is handled by i18n.js; this covers the phase badge, guess
+// dropdown, and action panels built from JS.
+window.addEventListener('dvc:langchange', () => {
+    // preserveMessage=false so the current game message (reset to the static
+    // start prompt by applyI18n) is restored from gameState.
+    if (gameState) updateUI(false, false);
+});
 
 // ============== Title Cards ==============
 
