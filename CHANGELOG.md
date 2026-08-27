@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/rocknroll17/davinci-code-server/compare/v0.4.1...v0.5.0) (2026-08-27)
+
+
+### Features
+
+* **i18n:** Korean/English support for the browser demo ([#32](https://github.com/rocknroll17/davinci-code-server/issues/32)) ([0f17248](https://github.com/rocknroll17/davinci-code-server/commit/0f1724855bc3e81f7bd16403c5f30597e27918a1))
+* **seo:** add meta tags, sitemap.xml, robots.txt for search indexing ([c38e752](https://github.com/rocknroll17/davinci-code-server/commit/c38e75298e3c58a37e6950a26a22926026b90917))
+
+
+### Bug Fixes
+
+* **ci:** smoke test route check via OpenAPI schema (Starlette 1.6 no longer flattens included routers) ([04c4319](https://github.com/rocknroll17/davinci-code-server/commit/04c4319c7f3493a3d946d1c0cc2ad476300d30e3))
+
 ## [0.4.1](https://github.com/rocknroll17/davinci-code-server/compare/v0.4.0...v0.4.1) (2026-06-01)
 
 
