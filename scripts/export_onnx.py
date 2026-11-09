@@ -5,7 +5,7 @@ masks (those are cheap and done in JS, see docs/app.js). This keeps the ONNX
 graph a clean, deterministic function of the raw observation.
 
   Inputs : phase(1,3), my_hand(1,13,2), opponent_hand(1,13,2),
-           constraint_matrix(1,13,13), remaining_deck(1,2),
+           opp_hand_constraint(1,13,13), my_hand_constraint(1,13,13), remaining_deck(1,2),
            selected_position(1,) int64
   Outputs: color_logits(1,2), position_logits(1,13), value_logits(1,13),
            decision_logits(1,2), belief_logits(1,13,13), value(1,1)
@@ -61,14 +61,15 @@ class ExportWrapper(nn.Module):
         super().__init__()
         self.p = policy
 
-    def forward(self, phase, my_hand, opponent_hand, constraint_matrix,
-                remaining_deck, selected_position):
+    def forward(self, phase, my_hand, opponent_hand, opp_hand_constraint,
+                my_hand_constraint, remaining_deck, selected_position):
         p = self.p
         obs = {
             "phase": phase,
             "my_hand": my_hand,
             "opponent_hand": opponent_hand,
-            "constraint_matrix": constraint_matrix,
+            "opp_hand_constraint": opp_hand_constraint,
+            "my_hand_constraint": my_hand_constraint,
             "remaining_deck": remaining_deck,
         }
         features, _constraint_per_pos, opponent_per_pos = p.encoder(obs)
@@ -102,9 +103,12 @@ def make_dummy():
     cm[2] = 0; cm[2, 4] = 1
     cm[3] = 0; cm[3, [5, 7, 8, 9, 10, 11]] = 1
     constraint = torch.from_numpy(cm).unsqueeze(0)
+    my_cm = np.full((MAX_HAND_SIZE, NUM_VALUES), -1.0, dtype=np.float32)
+    my_cm[:5] = 0; my_cm[1, 3] = 1
+    my_constraint = torch.from_numpy(my_cm).unsqueeze(0)
     deck = torch.tensor([[6., 4.]], dtype=torch.float32)
     sel = torch.tensor([1], dtype=torch.int64)
-    return phase, my_hand, opp_hand, constraint, deck, sel
+    return phase, my_hand, opp_hand, constraint, my_constraint, deck, sel
 
 
 def main():
@@ -115,8 +119,8 @@ def main():
 
     torch.onnx.export(
         wrapper, args, OUT,
-        input_names=["phase", "my_hand", "opponent_hand", "constraint_matrix",
-                     "remaining_deck", "selected_position"],
+        input_names=["phase", "my_hand", "opponent_hand", "opp_hand_constraint",
+                     "my_hand_constraint", "remaining_deck", "selected_position"],
         output_names=["color_logits", "position_logits", "value_logits",
                       "decision_logits", "belief_logits", "value"],
         opset_version=OPSET, dynamo=False, do_constant_folding=True,

@@ -66,13 +66,15 @@ class Observation:
         phase: 현재 페이즈 one-hot vector (3,)
         my_hand: 내 핸드 (MAX_HAND_SIZE, 2) - [color, value]
         opponent_hand: 상대방 핸드 (MAX_HAND_SIZE, 2) - 숨겨진 값
-        constraint_matrix: 제약 행렬 (MAX_HAND_SIZE, NUM_VALUES)
+        opp_hand_constraint: 상대 패 슬롯별로 내가 배제한 값 (MAX_HAND_SIZE, NUM_VALUES)
+        my_hand_constraint: 내 패 슬롯별로 상대가 배제한 값 (MAX_HAND_SIZE, NUM_VALUES)
         remaining_deck: 남은 덱 [black_count, white_count]
     """
     phase: torch.Tensor  # (1, 3)
     my_hand: torch.Tensor  # (1, MAX_HAND_SIZE, 2)
     opponent_hand: torch.Tensor  # (1, MAX_HAND_SIZE, 2)
-    constraint_matrix: torch.Tensor  # (1, MAX_HAND_SIZE, NUM_VALUES)
+    opp_hand_constraint: torch.Tensor  # (1, MAX_HAND_SIZE, NUM_VALUES)
+    my_hand_constraint: torch.Tensor  # (1, MAX_HAND_SIZE, NUM_VALUES)
     remaining_deck: torch.Tensor  # (1, 2)
     
     def to_dict(self) -> Dict[str, torch.Tensor]:
@@ -81,7 +83,8 @@ class Observation:
             "phase": self.phase,
             "my_hand": self.my_hand,
             "opponent_hand": self.opponent_hand,
-            "constraint_matrix": self.constraint_matrix,
+            "opp_hand_constraint": self.opp_hand_constraint,
+            "my_hand_constraint": self.my_hand_constraint,
             "remaining_deck": self.remaining_deck,
         }
     
@@ -112,15 +115,11 @@ class Observation:
         my_hand = player.hand.to_observation(hidden=False)
         opp_hand = player.opponent.hand.to_observation(hidden=True)
         
-        # Constraint matrix (MAX_HAND_SIZE, NUM_VALUES) - AIPlayer만 constraint matrix 사용
-        
-        if hasattr(player, '_constraint_matrix'):
-            constraint_matrix = player.constraint_matrix.astype(np.float32)
-            # 디버깅: 제약행렬 예쁘게 출력
-            # _print_constraint_matrix(constraint_matrix, player_id)
-        else:
-            # HumanPlayer는 빈 constraint matrix (모두 0으로 초기화)
-            constraint_matrix = np.zeros((MAX_HAND_SIZE, NUM_VALUES), dtype=np.float32)
+        # Constraint matrices (MAX_HAND_SIZE, NUM_VALUES): 내가 상대 패에 대해 / 상대가 내 패에 대해 배제한 값
+        opp_hand_constraint = player.constraint_matrix.astype(np.float32)
+        my_hand_constraint = player.opponent.constraint_matrix.astype(np.float32)
+        # 디버깅: 제약행렬 예쁘게 출력
+        # _print_constraint_matrix(opp_hand_constraint, player_id)
         
         # Remaining deck (2,)
         remaining_deck = np.array(engine.deck.get_remaining(), dtype=np.float32)
@@ -130,7 +129,8 @@ class Observation:
             phase=torch.from_numpy(phase_onehot).unsqueeze(0).to(device),
             my_hand=torch.from_numpy(my_hand.astype(np.float32)).unsqueeze(0).to(device),
             opponent_hand=torch.from_numpy(opp_hand.astype(np.float32)).unsqueeze(0).to(device),
-            constraint_matrix=torch.from_numpy(constraint_matrix).unsqueeze(0).to(device),
+            opp_hand_constraint=torch.from_numpy(opp_hand_constraint).unsqueeze(0).to(device),
+            my_hand_constraint=torch.from_numpy(my_hand_constraint).unsqueeze(0).to(device),
             remaining_deck=torch.from_numpy(remaining_deck).unsqueeze(0).to(device),
         )
     
@@ -140,7 +140,8 @@ class Observation:
         phase: np.ndarray,
         my_hand: np.ndarray,
         opponent_hand: np.ndarray,
-        constraint_matrix: np.ndarray,
+        opp_hand_constraint: np.ndarray,
+        my_hand_constraint: np.ndarray,
         remaining_deck: np.ndarray,
         device: torch.device = torch.device("cpu")
     ) -> "Observation":
@@ -151,7 +152,8 @@ class Observation:
             phase: Phase one-hot (3,)
             my_hand: 내 핸드 (MAX_HAND_SIZE, 2)
             opponent_hand: 상대방 핸드 (MAX_HAND_SIZE, 2)
-            constraint_matrix: 제약 행렬 (MAX_HAND_SIZE, NUM_VALUES)
+            opp_hand_constraint: 상대 패에 대해 내가 배제한 값 (MAX_HAND_SIZE, NUM_VALUES)
+            my_hand_constraint: 내 패에 대해 상대가 배제한 값 (MAX_HAND_SIZE, NUM_VALUES)
             remaining_deck: 남은 덱 (2,)
             device: 텐서 디바이스
         
@@ -162,7 +164,8 @@ class Observation:
             phase=torch.from_numpy(phase).unsqueeze(0).to(device),
             my_hand=torch.from_numpy(my_hand.astype(np.float32)).unsqueeze(0).to(device),
             opponent_hand=torch.from_numpy(opponent_hand.astype(np.float32)).unsqueeze(0).to(device),
-            constraint_matrix=torch.from_numpy(constraint_matrix).unsqueeze(0).to(device),
+            opp_hand_constraint=torch.from_numpy(opp_hand_constraint).unsqueeze(0).to(device),
+            my_hand_constraint=torch.from_numpy(my_hand_constraint).unsqueeze(0).to(device),
             remaining_deck=torch.from_numpy(remaining_deck).unsqueeze(0).to(device),
         )
 

@@ -120,7 +120,7 @@ class GameEngine:
         self.players[1].add_initial_cards(player1_cards)
         
         # Constraint matrix 초기화 (AI 플레이어만)
-        # 각 AI 플레이어의 constraint matrix를 -1로 리셋 후, 상대의 초기 핸드 사이즈(4)만큼 unknown(0)으로 설정
+        # 각 플레이어의 constraint matrix를 -1로 리셋 후, 상대의 초기 핸드 사이즈(4)만큼 unknown(0)으로 설정
         initial_hand_size = 4
         for player in self.players:
             # 순환 import 방지: hasattr로 체크
@@ -208,7 +208,7 @@ class GameEngine:
 
         player.place(position)
         
-        # 상대방의 constraint matrix 업데이트 (AI만)
+        # 상대방의 constraint matrix 업데이트
         opponent = self.get_opponent_by_id(player_id)
         if hasattr(opponent, '_constraint_matrix'):
             opponent.update_constraint_for_new_card(position)
@@ -259,7 +259,7 @@ class GameEngine:
         from app.schemas.results.guess import GuessResult
         if correct:
             target_card.reveal()
-            # 맞춘 위치를 constraint matrix에 기록 (AI만)
+            # 맞춘 위치를 constraint matrix에 기록
             if hasattr(player, '_constraint_matrix'):
                 player.record_revealed(target_position)
             guess_result = GuessResult(player=player, card=target_card, position=target_position, guessed_value=str(guessed_value), is_correct=True)
@@ -269,7 +269,7 @@ class GameEngine:
             if target_hand.all_revealed():
                 self._end_game(self.current_player)
         else:
-            # 틀린 추측을 constraint matrix에 기록 (AI만, color-aware)
+            # 틀린 추측을 constraint matrix에 기록 (color-aware)
             if hasattr(player, '_constraint_matrix'):
                 player.record_failed_guess(target_position, guessed_value, target_card.color.value)
             
@@ -277,7 +277,7 @@ class GameEngine:
             revealed_index = self._reveal_drawn_card()
             revealed_card = self.current_player.hand[revealed_index]
             
-            # 상대방의 constraint matrix에도 내 공개된 카드 위치 기록 (AI만)
+            # 상대방의 constraint matrix에도 내 공개된 카드 위치 기록
             opponent = self.get_opponent_by_id(player.id)
             if hasattr(opponent, '_constraint_matrix'):
                 opponent.record_revealed(revealed_index)
