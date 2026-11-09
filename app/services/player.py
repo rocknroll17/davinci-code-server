@@ -44,6 +44,8 @@ class Player(ABC):
         self.pending_card: Optional[PendingCard] = None
         self._opponent: Optional["Player"] = None
         self._event_queue: Optional[asyncio.Queue] = None  # SSE 이벤트 큐
+        # 내가 상대 패에 대해 배제한 값 (사람/AI 모두 기록: AI의 my_hand_constraint 입력이 사람 것을 씀)
+        self._constraint_matrix: np.ndarray = np.full((MAX_HAND_SIZE, NUM_VALUES), -1, dtype=np.int8)
     
     # ==================== 기본 속성 ====================
     
@@ -138,6 +140,73 @@ class Player(ABC):
         if self._hand is not None:
             self._hand.add_initial_cards(cards)
 
+    # ==================== Constraint Matrix 관리 ====================
+    
+    def reset_constraint_matrix(self):
+        """constraint matrix 초기화 (모두 -1: 상대 핸드에 없는 위치)"""
+        self._constraint_matrix.fill(-1)
+    
+    def init_constraint_for_initial_hand(self, initial_hand_size: int):
+        """
+        게임 시작 시 상대의 초기 핸드 사이즈만큼 unknown(0)으로 설정
+        
+        Args:
+            initial_hand_size: 초기 핸드 사이즈 (보통 4)
+        """
+        self._constraint_matrix[:initial_hand_size, :] = 0
+    
+    def record_failed_guess(self, position: int, value: int, color: int = 0):
+        """
+        틀린 추측 기록 (13-col, slot color known from opp_hand)
+        
+        Args:
+            position: 추측한 위치
+            value: 틀린 값 (0-12)
+            color: 카드 색상 (미사용, opp_hand에서 이미 전달됨)
+        """
+        if 0 <= position < MAX_HAND_SIZE and 0 <= value < NUM_VALUES:
+            col = value
+            self._constraint_matrix[position, col] = 1
+    
+    def record_revealed(self, position: int):
+        """
+        카드가 공개되었을 때 해당 위치 전체를 마킹
+        
+        Args:
+            position: 공개된 카드 위치
+        """
+        if 0 <= position < MAX_HAND_SIZE:
+            self._constraint_matrix[position, :] = 1
+    
+    def update_constraint_for_new_card(self, position: int):
+        """
+        상대가 새 카드를 배치했을 때 constraint matrix 업데이트
+        해당 위치에 새 행을 삽입하고 기존 행들을 shift
+        
+        Args:
+            position: 새 카드가 삽입된 위치
+        """
+        nrows, ncols = self._constraint_matrix.shape
+        position = max(0, min(position, nrows))
+        
+        # 새 위치에 0으로 채워진 행 삽입
+        self._constraint_matrix = np.insert(
+            self._constraint_matrix,
+            position,
+            values=np.zeros(ncols, dtype=self._constraint_matrix.dtype),
+            axis=0
+        )
+        
+        # 원래 크기로 truncate
+        if self._constraint_matrix.shape[0] > nrows:
+            self._constraint_matrix = self._constraint_matrix[:nrows, :]
+
+    @property
+    def constraint_matrix(self) -> np.ndarray:
+        """current constraint matrix 반환 (NUM_VALUES cols)"""
+        return self._constraint_matrix.copy()
+
+
 class HumanPlayer(Player):
     """
     인간 플레이어
@@ -183,7 +252,6 @@ class AIPlayer(Player):
     def __init__(self, player_id: str = "ai"):
         super().__init__(player_id)
         self.device = model_loader.device
-        self._constraint_matrix: np.ndarray = np.full((MAX_HAND_SIZE, NUM_VALUES), -1, dtype=np.int8)
         self._last_reasoning = None  # 마지막 추측 추론 데이터 (시각화용)
         self._reasoning_ack: asyncio.Event = asyncio.Event()  # 클라이언트 확인 버튼 신호
     
@@ -290,69 +358,3 @@ class AIPlayer(Player):
     def decision(self, continue_guessing: bool) -> bool:
         """결정 정보 반환"""
         return continue_guessing
-    
-    # ==================== Constraint Matrix 관리 ====================
-    
-    def reset_constraint_matrix(self):
-        """constraint matrix 초기화 (모두 -1: 상대 핸드에 없는 위치)"""
-        self._constraint_matrix.fill(-1)
-    
-    def init_constraint_for_initial_hand(self, initial_hand_size: int):
-        """
-        게임 시작 시 상대의 초기 핸드 사이즈만큼 unknown(0)으로 설정
-        
-        Args:
-            initial_hand_size: 초기 핸드 사이즈 (보통 4)
-        """
-        self._constraint_matrix[:initial_hand_size, :] = 0
-    
-    def record_failed_guess(self, position: int, value: int, color: int = 0):
-        """
-        틀린 추측 기록 (13-col, slot color known from opp_hand)
-        
-        Args:
-            position: 추측한 위치
-            value: 틀린 값 (0-12)
-            color: 카드 색상 (미사용, opp_hand에서 이미 전달됨)
-        """
-        if 0 <= position < MAX_HAND_SIZE and 0 <= value < NUM_VALUES:
-            col = value
-            self._constraint_matrix[position, col] = 1
-    
-    def record_revealed(self, position: int):
-        """
-        카드가 공개되었을 때 해당 위치 전체를 마킹
-        
-        Args:
-            position: 공개된 카드 위치
-        """
-        if 0 <= position < MAX_HAND_SIZE:
-            self._constraint_matrix[position, :] = 1
-    
-    def update_constraint_for_new_card(self, position: int):
-        """
-        상대가 새 카드를 배치했을 때 constraint matrix 업데이트
-        해당 위치에 새 행을 삽입하고 기존 행들을 shift
-        
-        Args:
-            position: 새 카드가 삽입된 위치
-        """
-        nrows, ncols = self._constraint_matrix.shape
-        position = max(0, min(position, nrows))
-        
-        # 새 위치에 0으로 채워진 행 삽입
-        self._constraint_matrix = np.insert(
-            self._constraint_matrix,
-            position,
-            values=np.zeros(ncols, dtype=self._constraint_matrix.dtype),
-            axis=0
-        )
-        
-        # 원래 크기로 truncate
-        if self._constraint_matrix.shape[0] > nrows:
-            self._constraint_matrix = self._constraint_matrix[:nrows, :]
-
-    @property
-    def constraint_matrix(self) -> np.ndarray:
-        """current constraint matrix 반환 (NUM_VALUES cols)"""
-        return self._constraint_matrix.copy()

@@ -64,7 +64,8 @@
       phase: f32(obs.phase, [1, 3]),
       my_hand: f32(obs.my_hand, [1, MAX_HAND_SIZE, 2]),
       opponent_hand: f32(obs.opponent_hand, [1, MAX_HAND_SIZE, 2]),
-      constraint_matrix: f32(obs.constraint_matrix, [1, MAX_HAND_SIZE, NUM_VALUES]),
+      opp_hand_constraint: f32(obs.opp_hand_constraint, [1, MAX_HAND_SIZE, NUM_VALUES]),
+      my_hand_constraint: f32(obs.my_hand_constraint, [1, MAX_HAND_SIZE, NUM_VALUES]),
       remaining_deck: f32(obs.remaining_deck, [1, 2]),
       selected_position: i64([selectedPos], [1]),
     };
@@ -247,6 +248,8 @@
     return {
       id, type: 'human', player_index: null, hand: newHand(),
       pending_card: null, opponent: null,
+      // tracked for humans too: it is the AI's my_hand_constraint input
+      cm: Array.from({ length: MAX_HAND_SIZE }, () => new Array(NUM_VALUES).fill(-1)),
     };
   }
 
@@ -262,7 +265,7 @@
   }
   const isAI = (p) => p && p.type === 'ai';
 
-  // Constraint-matrix updates (AIPlayer methods)
+  // Constraint-matrix updates (Player methods, both human and AI)
   function cmReset(p) { for (const row of p.cm) row.fill(-1); }
   function cmInitInitial(p, n) { for (let i = 0; i < n; i++) p.cm[i].fill(0); }
   function cmRecordFailedGuess(p, position, value) {
@@ -310,7 +313,7 @@
     handAddInitial(e.players[0].hand, p0c);
     handAddInitial(e.players[1].hand, p1c);
     for (const p of e.players) {
-      if (isAI(p)) { cmReset(p); cmInitInitial(p, INITIAL_HAND_SIZE); }
+      cmReset(p); cmInitInitial(p, INITIAL_HAND_SIZE);
     }
     e.current_player = e.play_order[0];
     e.is_started = true;
@@ -343,7 +346,7 @@
     handAddPending(player.hand, card, position);
     player.pending_card = null;
     const opponent = getOpponentById(e, playerId);
-    if (isAI(opponent)) cmUpdateForNewCard(opponent, position);
+    cmUpdateForNewCard(opponent, position);
     e.pending_card = null;
     e.phase = Phase.GUESS;
     return { placed_card: card, position };
@@ -363,16 +366,16 @@
     let result;
     if (correct) {
       targetCard.is_revealed = true;
-      if (isAI(player)) cmRecordRevealed(player, targetPosition);
+      cmRecordRevealed(player, targetPosition);
       result = { card: targetCard, position: targetPosition, guessed_value: String(guessedValue), is_correct: true, revealed_position: -1 };
       e.phase = Phase.DECISION;
       if (handAllRevealed(targetHand)) endGame(e, e.current_player);
     } else {
-      if (isAI(player)) cmRecordFailedGuess(player, targetPosition, guessedValue);
+      cmRecordFailedGuess(player, targetPosition, guessedValue);
       const revealedIndex = revealDrawnCard(e);
       const revealedCard = e.current_player.hand[revealedIndex];
       const opponent = getOpponentById(e, player.id);
-      if (isAI(opponent)) cmRecordRevealed(opponent, revealedIndex);
+      cmRecordRevealed(opponent, revealedIndex);
       result = { card: revealedCard, position: targetPosition, guessed_value: String(guessedValue), is_correct: false, revealed_position: revealedIndex };
       if (handAllRevealed(e.current_player.hand)) endGame(e, opponentPlayer(e));
       else endTurn(e);
@@ -422,11 +425,10 @@
     const player = getPlayerById(e, playerId);
     const my_hand = handToObservation(player.hand, false);
     const opp_hand = handToObservation(player.opponent.hand, true);
-    let constraint_matrix;
-    if (isAI(player)) constraint_matrix = player.cm.map(r => r.slice());
-    else constraint_matrix = Array.from({ length: MAX_HAND_SIZE }, () => new Array(NUM_VALUES).fill(0));
+    const opp_hand_constraint = player.cm.map(r => r.slice());
+    const my_hand_constraint = player.opponent.cm.map(r => r.slice());
     const remaining_deck = deckRemaining(e.deck);
-    return { phase, my_hand, opponent_hand: opp_hand, constraint_matrix, remaining_deck };
+    return { phase, my_hand, opponent_hand: opp_hand, opp_hand_constraint, my_hand_constraint, remaining_deck };
   }
 
   // ActionMask.from_engine (color/position/value/decision)
