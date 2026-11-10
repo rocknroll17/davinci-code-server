@@ -6,7 +6,7 @@ import os
 import torch
 from typing import Optional
 
-from app.game.model import DaVinciCodePolicy
+from app.game.model import DaVinciCodePolicy, load_weights
 from app.core.config import settings
 
 
@@ -39,15 +39,9 @@ class ModelLoader:
         if os.path.exists(path):
             checkpoint = torch.load(path, map_location=self.device, weights_only=False)
             # Filter shape-mismatched keys (e.g., belief_head after architecture update)
-            saved_state = checkpoint["policy_state_dict"]
-            model_state = self.policy.state_dict()
-            compatible = {k: v for k, v in saved_state.items()
-                          if k in model_state and v.shape == model_state[k].shape}
-            shape_mismatch = [k for k, v in saved_state.items()
-                              if k in model_state and v.shape != model_state[k].shape]
-            if shape_mismatch:
-                print(f"Shape mismatch — re-initialized: {shape_mismatch}")
-            self.policy.load_state_dict(compatible, strict=False)
+            fresh = load_weights(self.policy, checkpoint["policy_state_dict"])
+            if fresh:
+                print(f"Parameters kept (some) fresh init: {fresh}")
             timesteps = checkpoint.get("timesteps", 0)
             print(f"✓ 모델 로드 완료: {path} ({timesteps:,} timesteps)")
         else:
@@ -65,20 +59,19 @@ class ModelLoader:
         """
         AI 액션 결정 + 마지막 Transformer 레이어 기반 추론 시각화 데이터 추출.
 
-        토큰 레이아웃 (42개, CLS 포함):
+        토큰 레이아웃 (55개, CLS 포함):
           [0]      CLS
           [1-13]   AI 자신의 카드   (화면의 opponent-hand)
           [14-26]  상대 (인간) 카드 (화면의 player-hand)
-          [27-39]  constraint 토큰  (화면에 표시 안 함)
-          [40]     phase 토큰
-          [41]     deck 토큰
+          [27-39]  상대 카드 constraint 토큰 (화면에 표시 안 함)
+          [40-52]  AI 카드 constraint 토큰   (화면에 표시 안 함)
+          [53]     phase 토큰
+          [54]     deck 토큰
 
-        attention_scores 반환 레이아웃 (41개, CLS 제외):
+        attention_scores 반환 레이아웃 (토큰 수 - 1개, CLS 제외):
           [0-12]   AI 자신의 카드   (opponent-hand)
           [13-25]  상대 (인간) 카드 (player-hand)
-          [26-38]  constraint 토큰  (화면에 표시 안 함)
-          [39]     phase 토큰
-          [40]     deck 토큰
+          [26-]    constraint / phase / deck 토큰 (화면에 표시 안 함)
 
         정규화는 화면에 보이는 카드 26개([0-25]) 기준으로만 수행한다 — 보이지 않는
         constraint/phase/deck 토큰을 분모에 섞으면 표시되는 attention %가 왜곡되기 때문.
@@ -110,8 +103,7 @@ class ModelLoader:
             hook.remove()
             enc_hook.remove()
 
-        # 41 = 42 tokens(CLS + my13 + opp13 + constraint13 + phase + deck) minus CLS
-        scores = [0.0] * 41
+        scores = []  # one score per non-CLS token
         if 'out' in captured and 'src' in captured:
             position = int(action[0, 1].item())
             # CLS offset: opp tokens start at index 14 (1 CLS + 13 my cards)
