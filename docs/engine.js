@@ -543,16 +543,16 @@
     const value = maskedArgmax(valLogits, mask.value[position]);
 
     // ----- attention scores -----
-    const D = 128, T = 42;
-    const src = r1.last_layer_src.data;   // (1,42,128)
+    const D = 128, T = r1.last_layer_src.dims[1];   // tokens incl. CLS (55)
+    const src = r1.last_layer_src.data;   // (1,T,128)
     const out = r1.last_layer_out.data;
     const rowOf = (buf, idx) => { const o = idx * D, v = new Float32Array(D); for (let k = 0; k < D; k++) v[k] = buf[o + k]; return v; };
     const normVec = (v) => { let s = 0; for (const x of v) s += x * x; s = Math.sqrt(s); const r = new Float32Array(v.length); for (let i = 0; i < v.length; i++) r[i] = s > 0 ? v[i] / s : 0; return r; };
 
-    let scores = new Array(41).fill(0);
+    let scores = new Array(T - 1).fill(0);
     const oppTokenIdx = 1 + MAX_HAND_SIZE + position; // CLS + 13 my + pos
     const targetOut = normVec(rowOf(out, oppTokenIdx));
-    let raw = new Array(41).fill(0);
+    let raw = new Array(T - 1).fill(0);
     for (let t = 1; t < T; t++) {
       const s = normVec(rowOf(src, t));
       let dot = 0; for (let k = 0; k < D; k++) dot += targetOut[k] * s[k];

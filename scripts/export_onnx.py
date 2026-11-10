@@ -32,7 +32,7 @@ import torch.nn as nn
 # Make the package importable from the repo root.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.game.model import DaVinciCodePolicy
+from app.game.model import DaVinciCodePolicy, load_weights
 from app.game.constants import MAX_HAND_SIZE, NUM_VALUES
 
 CKPT = sys.argv[1] if len(sys.argv) > 1 else "checkpoints/model.pt"
@@ -43,12 +43,8 @@ OPSET = 17
 def load_policy(ckpt_path: str) -> DaVinciCodePolicy:
     policy = DaVinciCodePolicy().eval()
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    saved = ckpt["policy_state_dict"]
-    model_state = policy.state_dict()
-    compatible = {k: v for k, v in saved.items()
-                  if k in model_state and v.shape == model_state[k].shape}
-    missing = policy.load_state_dict(compatible, strict=False)
-    print("loaded; missing/unexpected:", missing)
+    fresh = load_weights(policy, ckpt["policy_state_dict"])
+    print("loaded; params kept (some) fresh init:", fresh)
     return policy
 
 
