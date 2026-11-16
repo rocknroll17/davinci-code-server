@@ -14,8 +14,14 @@ enough: JS picks the position, then reads that position's row. (The value head
 is a tiny MLP; the encoder, which dominates the cost, runs once.)
 
 Usage (from repo root, with deps installed):
-    python scripts/export_onnx.py [CHECKPOINT] [OUTPUT]
+    python scripts/export_onnx.py [CHECKPOINT] [OUTPUT] [--int8]
     # defaults: checkpoints/model.pt -> docs/model.onnx
+
+The model shape (layers, widths) is read from the checkpoint's config.
+
+--int8 stores the weights as 8-bit integers (file about 1/3 the size). Activations
+are quantized to 7 bits (reduce_range): with the full 8 bits, x86 CPUs without VNNI
+saturate the integer products and pick different actions than the browser's WASM.
 
 Verify after export: run a few observations through PyTorch and onnxruntime and
 check argmax agreement (logit drift up to ~5e-3 is ordinary float32 noise).
@@ -33,14 +39,18 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.game.model import DaVinciCodePolicy, load_weights
 from app.game.constants import MAX_HAND_SIZE, NUM_VALUES
 
-CKPT = sys.argv[1] if len(sys.argv) > 1 else "checkpoints/model.pt"
-OUT = sys.argv[2] if len(sys.argv) > 2 else "docs/model.onnx"
+INT8 = "--int8" in sys.argv
+PATHS = [a for a in sys.argv[1:] if a != "--int8"]
+CKPT = PATHS[0] if len(PATHS) > 0 else "checkpoints/model.pt"
+OUT = PATHS[1] if len(PATHS) > 1 else "docs/model.onnx"
 OPSET = 17
 
 
 def load_policy(ckpt_path: str) -> DaVinciCodePolicy:
-    policy = DaVinciCodePolicy().eval()
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    cfg = ckpt.get("config", {})
+    policy = DaVinciCodePolicy(hidden_dim=cfg.get("hidden_dim") or 512, n_heads=cfg.get("n_heads") or 4,
+                               n_layers=cfg.get("n_layers") or 4, ff_dim=cfg.get("ff_dim") or 512).eval()
     fresh = load_weights(policy, ckpt["policy_state_dict"])
     print("loaded; params kept (some) fresh init:", fresh)
     return policy
@@ -119,6 +129,9 @@ def main():
     )
     import onnx
     onnx.checker.check_model(onnx.load(OUT))
+    if INT8:
+        from onnxruntime.quantization import QuantType, quantize_dynamic
+        quantize_dynamic(OUT, OUT, weight_type=QuantType.QInt8, reduce_range=True)
     print(f"exported {OUT} (opset {OPSET}); size = {os.path.getsize(OUT)} bytes")
 
 
