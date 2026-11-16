@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/rocknroll17/davinci-code-server/compare/v0.5.0...v0.5.1) (2026-11-16)
+
+
+### Documentation
+
+* **readme:** two ways to play, nothing else ([f2f429e](https://github.com/rocknroll17/davinci-code-server/commit/f2f429e1731a22beb02e111531da94e7248bab9c))
+* **readme:** two ways to play, nothing else ([db4970a](https://github.com/rocknroll17/davinci-code-server/commit/db4970a401699dbdaeafeb234ede77e3228842d0))
+
 ## [0.5.0](https://github.com/rocknroll17/davinci-code-server/compare/v0.4.1...v0.5.0) (2026-11-16)
 
 
