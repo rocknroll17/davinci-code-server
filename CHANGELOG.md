@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.5.0](https://github.com/rocknroll17/davinci-code-server/compare/v0.4.1...v0.5.0) (2026-11-16)
+
+
+### Features
+
+* 55-token model (my-hand constraints as their own tokens) + refreshed model.onnx ([784a171](https://github.com/rocknroll17/davinci-code-server/commit/784a171ad3eacc3efcce7670485cb9559b776a6c))
+* 55-token model + refreshed browser-demo model.onnx (~246M steps) ([70dc358](https://github.com/rocknroll17/davinci-code-server/commit/70dc358d9783e9cfca6db9cfe2cd86335f8fb500))
+* **i18n:** Korean/English support for the browser demo ([#32](https://github.com/rocknroll17/davinci-code-server/issues/32)) ([0f17248](https://github.com/rocknroll17/davinci-code-server/commit/0f1724855bc3e81f7bd16403c5f30597e27918a1))
+* my_hand_constraint input (opponent's ruled-out values on the AI's cards) ([7e1c2d8](https://github.com/rocknroll17/davinci-code-server/commit/7e1c2d805b2a89c84a05ce6a652c56c75edf32cb))
+* my_hand_constraint input + refreshed browser-demo model (~229M steps) ([bfc45c1](https://github.com/rocknroll17/davinci-code-server/commit/bfc45c13dba0eb010637dc0243962a30c1cc5c54))
+* **seo:** add meta tags, sitemap.xml, robots.txt for search indexing ([c38e752](https://github.com/rocknroll17/davinci-code-server/commit/c38e75298e3c58a37e6950a26a22926026b90917))
+
+
+### Bug Fixes
+
+* **ci:** smoke test route check via OpenAPI schema (Starlette 1.6 no longer flattens included routers) ([04c4319](https://github.com/rocknroll17/davinci-code-server/commit/04c4319c7f3493a3d946d1c0cc2ad476300d30e3))
+* **server:** build the policy with the shape recorded in the checkpoint ([d07b169](https://github.com/rocknroll17/davinci-code-server/commit/d07b1692492243e30fd2e8d9e66be25c58ee2ec7))
+* **server:** build the policy with the shape recorded in the checkpoint ([4b417e1](https://github.com/rocknroll17/davinci-code-server/commit/4b417e17bd018033cd93e06ba6a74bb2d65eb339))
+* **site:** bump script and model URL versions so the new engine and model load together ([35082f8](https://github.com/rocknroll17/davinci-code-server/commit/35082f8a7e3d559ba176af76a192f2d6aaff2ff0))
+
+
+### Performance
+
+* **model:** 2-layer narrow model (fusion 128, FFN 256), int8 ([3a3cfa1](https://github.com/rocknroll17/davinci-code-server/commit/3a3cfa134b12ad3f698c609b651caa126dcc2e1a))
+* single-run graph + 2-layer narrow int8 model (6.52MB -&gt; 0.68MB) ([6e3097f](https://github.com/rocknroll17/davinci-code-server/commit/6e3097fe5f3bf2a9cd76548beaa0e4b9fca628f8))
+* single-run ONNX graph (value logits for every position) ([94f8f17](https://github.com/rocknroll17/davinci-code-server/commit/94f8f173097ae93b589a4ed37da23a0b75a300ae))
+
 ## [0.4.1](https://github.com/rocknroll17/davinci-code-server/compare/v0.4.0...v0.4.1) (2026-06-01)
 
 
