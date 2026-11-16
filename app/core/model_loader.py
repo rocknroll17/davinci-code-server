@@ -33,11 +33,16 @@ class ModelLoader:
         path = checkpoint_path or settings.CHECKPOINT_PATH
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.policy = DaVinciCodePolicy().to(self.device)
-        self.policy.eval()
-        
+
         if os.path.exists(path):
             checkpoint = torch.load(path, map_location=self.device, weights_only=False)
+            # Model shape (layers, widths) comes from the checkpoint; older ones use the defaults.
+            cfg = checkpoint.get("config", {})
+            self.policy = DaVinciCodePolicy(
+                hidden_dim=cfg.get("hidden_dim") or 512, n_heads=cfg.get("n_heads") or 4,
+                n_layers=cfg.get("n_layers") or 4, ff_dim=cfg.get("ff_dim") or 512,
+            ).to(self.device)
+            self.policy.eval()
             # Filter shape-mismatched keys (e.g., belief_head after architecture update)
             fresh = load_weights(self.policy, checkpoint["policy_state_dict"])
             if fresh:
