@@ -1,9 +1,8 @@
 /**
- * Da Vinci Code Game - AI Lab (비밀번호 보호 + AI 추론 시각화)
+ * Da Vinci Code Game - browser demo
  *
- * Single-player, fully client-side. The UI (rendering, animations, AI reasoning
- * side-panel, password gate, DOM bindings, event-handler bodies) is preserved
- * UNCHANGED from the server-served static/ai_game.js. The ONLY layer replaced is
+ * Single-player, fully client-side. The UI (rendering, animations, DOM bindings,
+ * event-handler bodies) follows the server-served client. The layer replaced is
  * the data layer:
  *   - apiCall('/api/...') -> local engine calls returning the SAME JSON shapes
  *   - connectSSE()/EventSource -> an in-page event dispatcher firing the SAME
@@ -68,22 +67,6 @@ const t = window.I18N.t;
 // doesn't accumulate duplicate handlers — matching the original fresh-EventSource.
 let localBus = new EventTarget();
 
-// The reasoning-panel confirm button calls fetch('/api/game/reasoning_ack', ...)
-// in its UNCHANGED handler body. Route that one local endpoint to the session so
-// the AI guess (which awaits the ack) can proceed. Everything else falls through
-// to the real fetch (e.g. loading model.onnx / ort wasm from the CDN).
-const _origFetch = window.fetch.bind(window);
-window.fetch = function (input, init) {
-    const url = typeof input === 'string' ? input : (input && input.url) || '';
-    if (url.includes('/api/game/reasoning_ack')) {
-        if (session) session.reasoningAck();
-        return Promise.resolve(new Response(JSON.stringify({ success: true }), {
-            status: 200, headers: { 'Content-Type': 'application/json' },
-        }));
-    }
-    return _origFetch(input, init);
-};
-
 function emitEvent(eventName, dataObj) {
     // mimics SSE: handlers read JSON.parse(e.data)
     localBus.dispatchEvent(new MessageEvent(eventName, { data: JSON.stringify(dataObj) }));
@@ -103,7 +86,6 @@ class LocalSession {
         this.engine = DV.makeEngine([this.human, this.ai], 'local');
         this.gameId = 'local';
         this.playerId = this.human.id;
-        this._reasoningAck = null;   // resolver for reasoning_ack
     }
 
     start() {
@@ -297,11 +279,6 @@ class LocalSession {
         return { success: true };
     }
 
-    // reasoning_ack: resolve the pending promise that pauses the AI guess
-    reasoningAck() {
-        if (this._reasoningAck) { const r = this._reasoningAck; this._reasoningAck = null; r(); }
-        return { success: true };
-    }
 
     // ===== AI turn orchestration (game_service.py execute_ai_turn) =====
     async maybeRunAI(initialSleep = 0) {
@@ -373,22 +350,8 @@ class LocalSession {
 
     async aiGuess(ai) {
         const e = this.engine;
-        // Compute reasoning + action (mirrors guess_action). Emit ai_reasoning,
-        // then WAIT for the human's confirm button (reasoning_ack), then guess.
-        let reasoning, position, value;
-        try {
-            reasoning = await DV.getActionWithReasoning(e, ai.id);
-            position = reasoning.position;
-            value = reasoning.value;
-            // AI's own hand (real values) added to payload
-            reasoning.ai_hand = ai.hand.map((card, i) => ({
-                position: i, color: card.color, value: card.value, is_revealed: card.is_revealed,
-            }));
-        } catch (err) {
-            const action = await DV.getAction(e, ai.id);
-            position = action.position; value = action.value;
-            reasoning = null;
-        }
+        const action = await DV.getAction(e, ai.id);
+        let position = action.position, value = action.value;
 
         // guess_action validity check + first-hidden fallback
         const oppHand = DV.handToOpponentView(this.human.hand);
@@ -397,11 +360,11 @@ class LocalSession {
             for (let i = 0; i < oppHand.length; i++) {
                 if (!oppHand[i].is_revealed) { fixed = i; break; }
             }
-            if (fixed !== null) { position = fixed; if (reasoning) reasoning.position = fixed; }
+            if (fixed !== null) position = fixed;
             else { position = 0; value = 0; }
         }
 
-        // Public play: no reasoning panel — brief "thinking" pause, then guess.
+        // Brief "thinking" pause, then guess.
         await new Promise((resolve) => setTimeout(resolve, 800));
 
         const result = DV.engineGuess(e, ai.id, position, value);
@@ -510,10 +473,6 @@ async function localApi(endpoint, method, body) {
     if (path === '/api/game/decision') {
         return session.humanDecision(body.continue_guessing);
     }
-    if (path === '/api/game/reasoning_ack') {
-        if (session) session.reasoningAck();
-        return { success: true };
-    }
     throw new Error(`Unknown endpoint: ${path}`);
 }
 
@@ -531,8 +490,7 @@ function setLoadingState(loading) {
 
 // ============== SSE ==============
 //
-// connectSSE attaches the SAME handlers to the in-page localBus. Handler BODIES
-// are byte-identical to the server build's ai_game.js.
+// connectSSE attaches the server client's handlers to the in-page localBus.
 
 function connectSSE() {
     if (!gameId || !playerId) return;
@@ -557,9 +515,6 @@ function connectSSE() {
 
         if (data && data.action === 'guess') {
             const position = data.position;
-
-            // AI 추측 결과가 오면 추론 오버레이 닫기
-            hideAIReasoningOverlay();
 
             showMessage(`🎭 ${data.message}`, 2000);
 
@@ -619,13 +574,6 @@ function connectSSE() {
 
     eventSource.addEventListener('heartbeat', (e) => {
         console.log('Heartbeat');
-    });
-
-    // AI 추론 시각화 — AI 추측 0.8s 전에 수신
-    eventSource.addEventListener('ai_reasoning', (e) => {
-        const data = JSON.parse(e.data);
-        console.log('AI reasoning:', data);
-        showAIReasoningOverlay(data);
     });
 
     eventSource.addEventListener('my_action', (e) => {
@@ -1178,374 +1126,7 @@ function shakeMyCard(position) {
     setTimeout(() => card.classList.remove('guess-failed'), 800);
 }
 
-// ============== AI 추론 사이드 패널 ==============
-
-let _aiRevealHuman = false;  // 토글 상태: 내 패 실제 값 표시 여부
-let _lastReasoningData = null;  // 마지막 reasoning 데이터 (토글 시 재렌더)
-
-/**
- * AI 미니 카드 엘리먼트 생성
- */
-function _makeMiniCard(position, color, displayVal, classes = []) {
-    const el = document.createElement('div');
-    el.className = `ai-mini-card ${color === 0 ? 'mini-black' : 'mini-white'}`;
-    classes.forEach(c => el.classList.add(c));
-    el.innerHTML = `<span class="mini-pos">${position}</span><span class="mini-val">${displayVal}</span>`;
-    return el;
-}
-
-// ── 믿음 확률 툴팁 ────────────────────────────────────────────────────────
-let _beliefTooltip = null;
-
-function _ensureBeliefTooltip() {
-    if (_beliefTooltip) return _beliefTooltip;
-    const el = document.createElement('div');
-    el.id = 'ai-belief-tooltip';
-    el.className = 'ai-belief-tooltip hidden';
-    document.body.appendChild(el);
-    _beliefTooltip = el;
-    return el;
-}
-
-function _showBeliefTooltip(anchorEl, pos, probs, cardColor, isRevealed, realVal) {
-    const tooltip = _ensureBeliefTooltip();
-    tooltip.innerHTML = '';
-
-    const title = document.createElement('div');
-    title.className = 'belief-tooltip-title';
-    if (isRevealed) {
-        title.textContent = `내 ${pos}번 (공개됨: ${realVal === 12 ? '-' : realVal})`;
-    } else {
-        title.textContent = `내 ${pos}번 — AI 추정 분포`;
-    }
-    tooltip.appendChild(title);
-
-    if (!probs || probs.length === 0) {
-        const empty = document.createElement('div');
-        empty.className = 'belief-tooltip-empty';
-        empty.textContent = '데이터 없음';
-        tooltip.appendChild(empty);
-    } else {
-        // 카드 색 기준으로 필터: color=0(흑) → 짝수 값(0,2,4,6,8,10) + 조커
-        //                        color=1(백) → 홀수 값(1,3,5,7,9,11) + 조커
-        // 단, 모델 내부 belief는 색 정보를 학습했을 수 있으니 필터 없이 전체 표시 후 낮은 건 제거
-        const minProb = 0.03;
-        const entries = probs
-            .map((p, v) => ({ v, p }))
-            .filter(e => e.p >= minProb)
-            .sort((a, b) => b.p - a.p)
-            .slice(0, 10);  // 최대 10개
-
-        if (entries.length === 0) {
-            const empty = document.createElement('div');
-            empty.className = 'belief-tooltip-empty';
-            empty.textContent = '유의미한 확률 없음';
-            tooltip.appendChild(empty);
-        } else {
-            const chart = document.createElement('div');
-            chart.className = 'belief-chart';
-
-            // 세로 막대 그래프: 값별로 한 열
-            const barsRow = document.createElement('div');
-            barsRow.className = 'belief-bars-row';
-
-            const maxP = entries[0].p;
-            entries.forEach(({ v, p }) => {
-                const col = document.createElement('div');
-                col.className = 'belief-bar-col';
-                const pct = Math.round(p * 100);
-                const barH = Math.round((p / maxP) * 52);  // 최대 52px 기준 상대 높이
-
-                // 실제 값과 일치하면 강조
-                const isTrue = isRevealed && v === realVal;
-                col.innerHTML = `
-                    <div class="belief-bar-pct">${pct}%</div>
-                    <div class="belief-bar-wrap">
-                        <div class="belief-bar-fill ${isTrue ? 'belief-bar-true' : ''}" style="height:${barH}px"></div>
-                    </div>
-                    <div class="belief-bar-label">${v === 12 ? 'J' : v}</div>`;
-                barsRow.appendChild(col);
-            });
-            chart.appendChild(barsRow);
-            tooltip.appendChild(chart);
-        }
-    }
-
-    tooltip.classList.remove('hidden');
-
-    // 패널 왼쪽에 고정 위치
-    const panel = document.getElementById('ai-reasoning-panel');
-    const panelRect = panel ? panel.getBoundingClientRect() : { left: window.innerWidth - 300, top: 0 };
-    const anchorRect = anchorEl.getBoundingClientRect();
-
-    // 툴팁 크기 측정용 임시 렌더
-    tooltip.style.left = '0px';
-    tooltip.style.top = '0px';
-    const tW = tooltip.offsetWidth;
-    const tH = tooltip.offsetHeight;
-
-    let left = panelRect.left - tW - 10;
-    if (left < 5) left = 5;
-    let top = anchorRect.top + anchorRect.height / 2 - tH / 2;
-    if (top < 5) top = 5;
-    if (top + tH > window.innerHeight - 5) top = window.innerHeight - tH - 5;
-
-    tooltip.style.left = `${left}px`;
-    tooltip.style.top = `${top}px`;
-}
-
-function _hideBeliefTooltip() {
-    if (_beliefTooltip) _beliefTooltip.classList.add('hidden');
-}
-
-/**
- * 카드 수에 따라 패널 너비 + 카드 크기 동적 조정 (한 줄 유지)
- */
-function _adjustPanelWidth(data) {
-    const panel = document.getElementById('ai-reasoning-panel');
-    if (!panel) return;
-
-    const N = Math.max(
-        (data.ai_hand || []).length,
-        (gameState?.my_hand || []).length,
-        1
-    );
-
-    const GAP = 3, PADDING = 28, BASE_W = 34, BASE_H = 50;
-    const MAX_PANEL = 480, MIN_PANEL = 300;
-
-    // 한 줄에 N장 넣는 데 필요한 너비
-    const needed = N * (BASE_W + GAP) - GAP + PADDING;
-    const panelW = Math.max(MIN_PANEL, Math.min(MAX_PANEL, needed));
-
-    // 패널 내 실제 가용 너비에 맞춰 카드 폭 계산
-    const available = panelW - PADDING;
-    let cardW = Math.floor((available + GAP) / N - GAP);
-    cardW = Math.max(22, Math.min(BASE_W, cardW));
-    const cardH = Math.round(BASE_H * cardW / BASE_W);
-    const valSize = Math.max(0.65, cardW / BASE_W).toFixed(2);
-
-    panel.style.width = panelW + 'px';
-    panel.style.setProperty('--mini-card-w', cardW + 'px');
-    panel.style.setProperty('--mini-card-h', cardH + 'px');
-    panel.style.setProperty('--mini-val-size', valSize + 'rem');
-}
-// ─────────────────────────────────────────────────────────────────────────
-
-/**
- * AI 패 섹션 렌더 (data.ai_hand 기반 — 실제 값 포함)
- */
-function _renderAIHand(data) {
-    const { attention_scores, ai_hand } = data;
-    const el = document.getElementById('ai-panel-ai-hand');
-    if (!el) return;
-    el.innerHTML = '';
-    if (!ai_hand || !ai_hand.length) {
-        el.innerHTML = '<span style="opacity:0.35;font-size:0.75rem">데이터 없음</span>';
-        return;
-    }
-    ai_hand.forEach(card => {
-        const score   = attention_scores?.[card.position] ?? 0;  // [0-12] = AI 자신 카드
-        const isAttn  = score >= 0.2;
-        const val     = card.value === 12 ? '-' : card.value;
-        const classes = isAttn ? ['mini-attention'] : [];
-        el.appendChild(_makeMiniCard(card.position, card.color, val, classes));
-    });
-}
-
-/**
- * 내 패 섹션 렌더 (AI가 보는 시점 + 토글)
- * - 기본: hidden=?, revealed=실제값, target=추측값(빨간 글로우)
- * - 토글: 전부 실제 값 표시
- */
-function _renderHumanHand(data, showReal) {
-    const { position, value, attention_scores, belief_probs } = data;
-    const el = document.getElementById('ai-panel-human-hand');
-    if (!el || !gameState?.my_hand) return;
-    el.innerHTML = '';
-    const valueLabel = value === 12 ? '-' : String(value);
-    const sorted = [...gameState.my_hand].sort((a, b) => a.position - b.position);
-    sorted.forEach(card => {
-        const score    = attention_scores?.[13 + card.position] ?? 0;  // [13-25] = 인간 카드
-        const isTarget = card.position === position;
-        const isAttn   = !isTarget && score >= 0.2;
-        let displayVal;
-        if (isTarget) {
-            displayVal = valueLabel;  // AI 추측값 표시
-        } else if (showReal) {
-            displayVal = card.value === 12 ? '-' : card.value;  // 실제 값
-        } else {
-            // AI 시점: 공개된 것만 보임, 나머지는 ?
-            displayVal = card.revealed ? (card.value === 12 ? '-' : card.value) : '?';
-        }
-        const classes = [];
-        if (isTarget) classes.push('mini-target');
-        else if (isAttn) classes.push('mini-attention');
-
-        const miniCard = _makeMiniCard(card.position, card.color, displayVal, classes);
-
-        // 호버 시 belief 확률 분포 표시 (비공개 카드에서 특히 유용)
-        if (belief_probs && belief_probs[card.position]) {
-            miniCard.classList.add('mini-belief-hoverable');
-            const posProbs = belief_probs[card.position];
-            miniCard.addEventListener('mouseenter', () => {
-                _showBeliefTooltip(miniCard, card.position, posProbs, card.color, card.revealed, card.value);
-            });
-            miniCard.addEventListener('mouseleave', _hideBeliefTooltip);
-        }
-
-        el.appendChild(miniCard);
-    });
-}
-
-/**
- * AI 추론을 사이드 패널에 표시
- * @param {object} data  {position, value, attention_scores[28], ai_hand[]}
- */
-function showAIReasoningOverlay(data) {
-    const { position, value, attention_scores } = data;
-    if (!elements.gameScreen || elements.gameScreen.classList.contains('hidden')) return;
-
-    const panel = document.getElementById('ai-reasoning-panel');
-    if (!panel) return;
-
-    _lastReasoningData = data;
-    _aiRevealHuman = false;  // 패널 열 때마다 토글 초기화
-
-    // 결론 텍스트
-    const valueLabel = value === 12 ? '-' : String(value);
-    const conclusionEl = document.getElementById('ai-panel-conclusion');
-    if (conclusionEl) conclusionEl.textContent = `"포지션 ${position} → ${valueLabel === '-' ? '조커' : valueLabel}이다!"`;
-
-    // AI 자신의 패
-    _renderAIHand(data);
-
-    // 내 패 (AI 시점 기본)
-    _renderHumanHand(data, false);
-
-    // 카드 수에 따라 패널 너비 + 카드 크기 조정 (한 줄 유지)
-    _adjustPanelWidth(data);
-
-    // 토글 버튼 초기 상태
-    const toggleBtn = document.getElementById('ai-panel-reveal-toggle');
-    if (toggleBtn) {
-        toggleBtn.textContent = '실제 값 보기';
-        toggleBtn.classList.remove('active');
-        // 기존 핸들러 제거 후 재연결
-        const newBtn = toggleBtn.cloneNode(true);
-        toggleBtn.parentNode.replaceChild(newBtn, toggleBtn);
-        newBtn.addEventListener('click', () => {
-            _aiRevealHuman = !_aiRevealHuman;
-            newBtn.textContent = _aiRevealHuman ? '숨기기' : '실제 값 보기';
-            newBtn.classList.toggle('active', _aiRevealHuman);
-            _renderHumanHand(_lastReasoningData, _aiRevealHuman);
-        });
-    }
-
-    // 어텐션 스코어 바
-    const scoresEl = document.getElementById('ai-panel-scores');
-    if (scoresEl && attention_scores) {
-        scoresEl.innerHTML = '';
-
-        // 카드 정보 맵 구성
-        const myCardMap = {};
-        (gameState.my_hand || []).forEach(c => { myCardMap[c.position] = c; });
-        const aiCardMap = {};
-        (data.ai_hand || []).forEach(c => { aiCardMap[c.position] = c; });
-        const colorName = c => c === 0 ? '흑' : '백';
-        const valName = v => (v !== undefined && v >= 0) ? (v === 12 ? 'J' : String(v)) : '?';
-
-        const entries = [];
-        // [13-25] = 내 패. 실제 카드가 있는 위치만 표시.
-        // 인간은 자기 패를 다 알므로 항상 실제 값 표시 (revealed 무관)
-        for (let i = 13; i < 26; i++) {
-            const score = attention_scores[i] ?? 0;
-            if (score < 0.12) continue;
-            const pos = i - 13;
-            const card = myCardMap[pos];
-            if (!card) continue; // 실제 패가 없는 빈 슬롯 → 무시
-            const label = `내 패 ${pos}번 (${colorName(card.color)}·${valName(card.value)})`;
-            entries.push({ label, score, isTarget: pos === position, type: 'my', card });
-        }
-        // [0-12] = AI 패. 실제 카드가 있는 위치만 표시.
-        for (let i = 0; i < 13; i++) {
-            const score = attention_scores[i] ?? 0;
-            if (score < 0.12) continue;
-            const card = aiCardMap[i];
-            if (!card) continue; // 빈 슬롯 → 무시
-            const label = `AI 패 ${i}번 (${colorName(card.color)}·${valName(card.value)})`;
-            entries.push({ label, score, isTarget: false, type: 'ai', card });
-        }
-        entries.sort((a, b) => b.score - a.score);
-
-        // 추론 서사 문장 구성
-        const targetCard = myCardMap[position];
-        const targetColorStr = targetCard ? colorName(targetCard.color) : '?';
-        const guessedValStr = valName(value);
-        const top1 = entries[0];
-        const top2 = entries[1];
-
-        let narrativeText = `내 ${position}번(${targetColorStr}) → `;
-        narrativeText += `AI 추측: ${guessedValStr}`;
-        if (top1) {
-            narrativeText += ` | 주요 근거: ${top1.label}`;
-            if (top2 && top2.score > 0.18) narrativeText += `, ${top2.label}`;
-        }
-
-        const narrative = document.createElement('div');
-        narrative.className = 'ai-scores-narrative';
-        narrative.textContent = narrativeText;
-        scoresEl.appendChild(narrative);
-
-        if (entries.length === 0) {
-            const empty = document.createElement('div');
-            empty.className = 'ai-scores-header';
-            empty.textContent = '유의미한 어텐션 없음';
-            scoresEl.appendChild(empty);
-        } else {
-            const header = document.createElement('div');
-            header.className = 'ai-scores-header';
-            header.textContent = '판단에 영향을 준 카드 (어텐션 비중)';
-            scoresEl.appendChild(header);
-
-            entries.slice(0, 6).forEach(({ label, score, isTarget, type }) => {
-                const pct = Math.round(score * 100);
-                const row = document.createElement('div');
-                row.className = 'ai-score-row' + (isTarget ? ' ai-score-target-row' : '') + (type === 'ai' ? ' ai-score-ai-card' : '');
-                row.innerHTML = `
-                    <div class="ai-score-top">
-                        <span class="ai-score-label">${label}</span>
-                        ${isTarget ? '<span class="ai-score-target-mark">추측 대상</span>' : ''}
-                        <span class="ai-score-value">${pct}%</span>
-                    </div>
-                    <div class="ai-score-bar-bg"><div class="ai-score-bar-fill" style="width:${Math.min(100, pct)}%"></div></div>`;
-                scoresEl.appendChild(row);
-            });
-        }
-    }
-
-    panel.classList.remove('hidden');
-
-    // 확인 버튼 재연결 (중복 핸들러 방지)
-    const confirmBtn = document.getElementById('ai-reasoning-confirm-btn');
-    if (confirmBtn) {
-        const newBtn = confirmBtn.cloneNode(true);
-        confirmBtn.parentNode.replaceChild(newBtn, confirmBtn);
-        newBtn.addEventListener('click', async () => {
-            try {
-                await fetch(`/api/game/reasoning_ack?game_id=${gameId}&player_id=${playerId}`, { method: 'POST' });
-            } catch (e) { console.error('reasoning_ack failed:', e); }
-            hideAIReasoningOverlay();
-        });
-    }
-    // 자동 타이머 없음 — 확인 버튼으로만 닫힘
-}
-
-function hideAIReasoningOverlay() {
-    document.getElementById('ai-reasoning-panel')?.classList.add('hidden');
-}
-
 // ============== Init ==============
 // Public play page: no password gate — initialize once everything (incl. DV) is defined.
 initTitleCards();
-console.log('🧠 Da Vinci Code AI Lab loaded');
+console.log('Da Vinci Code loaded');

@@ -10,7 +10,6 @@
  *   app/services/game_engine.py  (GameEngine + PendingCard)
  *   app/services/player.py        (HumanPlayer, AIPlayer + constraint matrix)
  *   app/schemas/observation.py    (Observation.from_engine + ActionMask.from_engine)
- *   app/core/model_loader.py      (get_action_with_reasoning: attention + belief)
  *   app/game/model.py             (get_action deterministic: masked argmax + phase gating)
  *   app/services/game_session.py  (_build_state)
  *   app/services/actions/*.py     (handlers: messages + emit shape)
@@ -18,11 +17,8 @@
  *   app/services/game_service.py  (execute_ai_turn orchestration + timings)
  *   app/api/game.py               (background AI trigger after human actions)
  *
- * The ONNX graph (model.onnx) is a pure tensor function exported from the same
- * checkpoint, plus two extra graph outputs (last_layer_src / last_layer_out)
- * that expose the last transformer layer's residual-stream input & output so the
- * attention-score reasoning panel can be reproduced exactly (no re-export from
- * the .pt checkpoint — weights are byte-identical, only outputs were annotated).
+ * The ONNX graph (model.onnx) is a pure tensor function exported from the
+ * training checkpoint (scripts/export_onnx.py).
  */
 
 (function (global) {
@@ -264,7 +260,6 @@
       useModel: useModel,
       // constraint matrix: (MAX_HAND_SIZE, NUM_VALUES) filled with -1
       cm: Array.from({ length: MAX_HAND_SIZE }, () => new Array(NUM_VALUES).fill(-1)),
-      _last_reasoning: null,
     };
   }
   const isAI = (p) => p && p.type === 'ai';
@@ -530,68 +525,6 @@
              stateValue: Array.from(r1.value.data)[0] };
   }
 
-  // ==================== get_action_with_reasoning (model_loader.py) ====================
-  // Reproduces attention_scores (41) + belief_probs (13x13) exactly.
-  async function getActionWithReasoning(e, playerId) {
-    const obs = buildObservation(e, playerId);
-    const mask = buildActionMask(e, playerId);
-
-    const r1 = await runModel(obs);
-    const posLogits = Array.from(r1.position_logits.data);
-    const position = maskedArgmax(posLogits, mask.position);
-    const value = maskedArgmax(valueLogitsAt(r1, position), mask.value[position]);
-
-    // ----- attention scores -----
-    const D = 128, T = r1.last_layer_src.dims[1];   // tokens incl. CLS (55)
-    const src = r1.last_layer_src.data;   // (1,T,128)
-    const out = r1.last_layer_out.data;
-    const rowOf = (buf, idx) => { const o = idx * D, v = new Float32Array(D); for (let k = 0; k < D; k++) v[k] = buf[o + k]; return v; };
-    const normVec = (v) => { let s = 0; for (const x of v) s += x * x; s = Math.sqrt(s); const r = new Float32Array(v.length); for (let i = 0; i < v.length; i++) r[i] = s > 0 ? v[i] / s : 0; return r; };
-
-    let scores = new Array(T - 1).fill(0);
-    const oppTokenIdx = 1 + MAX_HAND_SIZE + position; // CLS + 13 my + pos
-    const targetOut = normVec(rowOf(out, oppTokenIdx));
-    let raw = new Array(T - 1).fill(0);
-    for (let t = 1; t < T; t++) {
-      const s = normVec(rowOf(src, t));
-      let dot = 0; for (let k = 0; k < D; k++) dot += targetOut[k] * s[k];
-      raw[t - 1] = dot;
-    }
-    const cardTokens = 2 * MAX_HAND_SIZE; // 26
-    const selfIdxNoCls = oppTokenIdx - 1;
-    let minCard = Infinity; for (let i = 0; i < cardTokens; i++) if (raw[i] < minCard) minCard = raw[i];
-    raw[selfIdxNoCls] = minCard;
-    let sMin = Infinity, sMax = -Infinity;
-    for (let i = 0; i < cardTokens; i++) { if (raw[i] < sMin) sMin = raw[i]; if (raw[i] > sMax) sMax = raw[i]; }
-    if (sMax - sMin > 1e-6) scores = raw.map(x => (x - sMin) / (sMax - sMin));
-    else scores = raw.map(() => 0);
-
-    // ----- belief probs -----
-    const bl = r1.belief_logits.data; // (1,13,13)
-    const softmax = (arr) => { const m = Math.max(...arr); const ex = arr.map(x => Math.exp(x - m)); const s = ex.reduce((a, b) => a + b, 0); return ex.map(x => x / s); };
-    const myHandObs = obs.my_hand, oppHandObs = obs.opponent_hand;
-    const myKnown = [], oppRevealed = [];
-    for (const c of myHandObs) if (c[1] >= 0) myKnown.push([c[0], c[1]]);
-    for (const c of oppHandObs) if (c[1] >= 0) oppRevealed.push([c[0], c[1]]);
-    const belief = [];
-    for (let pos = 0; pos < 13; pos++) {
-      const rowL = []; for (let v = 0; v < 13; v++) rowL.push(bl[pos * 13 + v]);
-      let p = softmax(rowL);
-      const posColor = oppHandObs[pos][0], posValue = oppHandObs[pos][1];
-      if (posValue === NONE_VAL) { belief.push(new Array(13).fill(0)); continue; }
-      if (posValue >= 0) { const z = new Array(13).fill(0); z[posValue] = 1; belief.push(z); continue; }
-      const impossible = new Set();
-      for (const [cl, v] of myKnown) if (cl === posColor) impossible.add(v);
-      for (const [cl, v] of oppRevealed) if (cl === posColor) impossible.add(v);
-      for (const v of impossible) if (v >= 0 && v <= 12) p[v] = 0;
-      let sum = p.reduce((a, b) => a + b, 0);
-      if (sum > 1e-8) p = p.map(x => x / sum);
-      belief.push(p);
-    }
-
-    return { position, value, attention_scores: scores, belief_probs: belief };
-  }
-
   // expose to game.js
   global.DVEngine = {
     // constants
@@ -604,7 +537,7 @@
     getPlayerById, getOpponentById, opponentPlayer, playerIndex,
     handToOpponentView, handAllRevealed,
     buildObservation, buildActionMask,
-    getAction, getActionWithReasoning,
+    getAction,
     isAI, deckIsEmpty, deckBlackCount, deckWhiteCount,
   };
 })(window);
