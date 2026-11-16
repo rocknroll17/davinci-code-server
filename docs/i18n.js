@@ -18,7 +18,7 @@
 
     const STRINGS = {
         // ---- static page (index.html data-i18n keys) ----
-        docTitle:        { ko: 'DaVinci Code — AI 대전', en: 'DaVinci Code — Play vs AI' },
+        docTitle:        { ko: 'DaVinci Code', en: 'DaVinci Code' },
         aiSection:       { ko: '🤖 AI 대전', en: '🤖 Play vs AI' },
         playVsAi:        { ko: 'AI와 대전하기', en: 'Play against the AI' },
         rulesTitle:      { ko: '📖 게임 규칙', en: '📖 Rules' },
