@@ -1120,7 +1120,7 @@ function initTitleCards() {
     blackCard.addEventListener('click', () => blackCard.classList.toggle('flipped'));
     whiteCard.addEventListener('click', () => whiteCard.classList.toggle('flipped'));
     // preload the ONNX model in the background so the first AI turn is snappy
-    DV.loadModel('model.onnx').catch(err => console.error('Model load failed:', err));
+    DV.loadModel('model.onnx?v=2').catch(err => console.error('Model load failed:', err));
 }
 
 // ============== Card Highlight ==============

@@ -57,9 +57,8 @@
   }
 
   function f32(arr, dims) { return new ort.Tensor('float32', Float32Array.from(arr.flat(Infinity)), dims); }
-  function i64(arr, dims) { return new ort.Tensor('int64', BigInt64Array.from(arr.map(BigInt)), dims); }
 
-  async function runModel(obs, selectedPos) {
+  async function runModel(obs) {
     const feeds = {
       phase: f32(obs.phase, [1, 3]),
       my_hand: f32(obs.my_hand, [1, MAX_HAND_SIZE, 2]),
@@ -67,9 +66,14 @@
       opp_hand_constraint: f32(obs.opp_hand_constraint, [1, MAX_HAND_SIZE, NUM_VALUES]),
       my_hand_constraint: f32(obs.my_hand_constraint, [1, MAX_HAND_SIZE, NUM_VALUES]),
       remaining_deck: f32(obs.remaining_deck, [1, 2]),
-      selected_position: i64([selectedPos], [1]),
     };
     return session.run(feeds);
+  }
+
+  // value_logits is (1, 13 positions, 13 values): the row for one position
+  function valueLogitsAt(result, position) {
+    const start = position * NUM_VALUES;
+    return Array.from(result.value_logits.data.slice(start, start + NUM_VALUES));
   }
 
   // ==================== Card (cards/card.py) ====================
@@ -510,7 +514,7 @@
   async function getAction(e, playerId) {
     const obs = buildObservation(e, playerId);
     const mask = buildActionMask(e, playerId);
-    const r1 = await runModel(obs, 0);
+    const r1 = await runModel(obs);
     const colorLogits = Array.from(r1.color_logits.data);
     const posLogits = Array.from(r1.position_logits.data);
     const decLogits = Array.from(r1.decision_logits.data);
@@ -519,10 +523,8 @@
     const positionAction = maskedArgmax(posLogits, mask.position);
     const decisionAction = maskedArgmax(decLogits, mask.decision);
 
-    // value head conditioned on chosen position (2nd run)
-    const r2 = await runModel(obs, positionAction);
-    const valLogits = Array.from(r2.value_logits.data);
-    const valueAction = maskedArgmax(valLogits, mask.value[positionAction]);
+    // value head conditioned on the chosen position
+    const valueAction = maskedArgmax(valueLogitsAt(r1, positionAction), mask.value[positionAction]);
 
     return { color: colorAction, position: positionAction, value: valueAction, decision: decisionAction,
              stateValue: Array.from(r1.value.data)[0] };
@@ -534,13 +536,10 @@
     const obs = buildObservation(e, playerId);
     const mask = buildActionMask(e, playerId);
 
-    const r1 = await runModel(obs, 0);
+    const r1 = await runModel(obs);
     const posLogits = Array.from(r1.position_logits.data);
     const position = maskedArgmax(posLogits, mask.position);
-
-    const r2 = await runModel(obs, position);
-    const valLogits = Array.from(r2.value_logits.data);
-    const value = maskedArgmax(valLogits, mask.value[position]);
+    const value = maskedArgmax(valueLogitsAt(r1, position), mask.value[position]);
 
     // ----- attention scores -----
     const D = 128, T = r1.last_layer_src.dims[1];   // tokens incl. CLS (55)
