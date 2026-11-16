@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/rocknroll17/davinci-code-server/compare/v0.5.1...v0.5.2) (2026-11-16)
+
+
+### Bug Fixes
+
+* **site:** page title is just "DaVinci Code" ([b854244](https://github.com/rocknroll17/davinci-code-server/commit/b8542445798d530fd44d011cccf6383c6e85e9d3))
+
 ## [0.5.1](https://github.com/rocknroll17/davinci-code-server/compare/v0.5.0...v0.5.1) (2026-11-16)
 
 
